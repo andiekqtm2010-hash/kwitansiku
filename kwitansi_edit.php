@@ -111,8 +111,10 @@ $id = (int)($_GET['id'] ?? 0);
           </tbody>
           <tfoot>
             <tr>
-              <th colspan="3" class="text-end">Total</th>
-              <th><input type="text" class="form-control" id="total" name="total" readonly></th>
+              <th class="text-end" style="border: 0px solid #0f0f0f">Discount</th>
+              <th style="border:0px solid #0f0f0f"><input type="text" id="discount" name="discount"></th>
+              <th colspan="3" class="text-end" style="border:0px solid #0f0f0f; width:20%">Total</th>
+              <th style="border:0px solid #0f0f0f"><input type="text" class="form-control" id="total" name="total" readonly></th>
               <th></th>
             </tr>
           </tfoot>

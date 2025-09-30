@@ -20,6 +20,14 @@
         $sql .= "WHERE no_kwitansi LIKE ? OR nama_pelanggan LIKE ? OR status_bayar LIKE ? ";
         $params = ["%$search%", "%$search%", "%$search%"];
         $types = "sss";
+
+        $stmt_total=$conn->prepare("SELECT SUM(total) as gtotal from kwitansi WHERE nama_pelanggan LIKE ?");
+        $search_like="%$search%";
+        $stmt_total->bind_param("s",$search_like);
+        $stmt_total->execute();
+        $grand_total=$stmt_total->get_result()->fetch_assoc()['gtotal']??0;
+        //echo "Grand total: " . number_format($grand_total, 0, ',', '.');
+        $stmt_total->close();
     }
 
     $sql_count = preg_replace('/SELECT \* FROM/', 'SELECT COUNT(*) as jml FROM', $sql, 1);
@@ -90,6 +98,7 @@
             <th>No Kwitansi</th>
             <th>Tanggal</th>
             <th>Nama Pelanggan</th>
+            <th>Catatan</th>
             <th>Status Bayar</th>
             <th class="text-end">Total</th>
             <th class="text-center">Aksi</th>
