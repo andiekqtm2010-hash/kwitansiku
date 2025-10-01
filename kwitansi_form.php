@@ -35,7 +35,7 @@ require_once "db.php";
           <label class="form-label">Status</label>
           <select class="form-select" name="status_bayar" required>
             <option value="Lunas" selected>Lunas</option>
-            <option value="No Lunas">No Lunas</option>
+            <option value="Piutang">Piutang</option>
           </select>
         </div>
       </div>

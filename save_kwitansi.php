@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // insert header
     $stmt = $conn->prepare("INSERT INTO kwitansi (no_kwitansi, tanggal, nama_pelanggan, alamat_pelanggan, catatan, status_bayar, total ) VALUES (?,?,?,?,?,?,?)");
-    $stmt->bind_param("ssssssd", $no_kwitansi, $tanggal, $nama, $alamat, $catatan,$status_bayar, $total );
+    $stmt->bind_param("ssssssd", $no_kwitansi, $tanggal, $nama, $alamat, $catatan, $status_bayar, $total );
     $stmt->execute();
     $kwitansi_id = $stmt->insert_id;
     $stmt->close();
