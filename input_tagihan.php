@@ -31,23 +31,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
     $stmt->bind_param(
-        "sssssiisssiiiii",   // sekarang 15 karakter, cocok 15 kolom
-        $tgl_bayar_dt,   // s
-        $id_transaksi,   // s
-        $no_pelanggan,   // s
-        $nama,           // s
-        $tarif_daya,     // s
-        $stand_awal,     // i
-        $stand_akhir,    // i
-        $reff1,          // s
-        $reff2,          // s
-        $periode,        // s
-        $rp_tagihan,     // i
-        $denda,          // i
-        $lain_lain,      // i
-        $admin_bank,     // i
-        $total_bayar     // i
-);
+        "sssssiisssiiiii",
+        $tgl_bayar_dt,
+        $id_transaksi,
+        $no_pelanggan,
+        $nama,
+        $tarif_daya,
+        $stand_awal,
+        $stand_akhir,
+        $reff1,
+        $reff2,
+        $periode,
+        $rp_tagihan,
+        $denda,
+        $lain_lain,
+        $admin_bank,
+        $total_bayar
+    );
 
     if ($stmt->execute()) {
         $last_id = $stmt->insert_id;
@@ -63,21 +63,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="UTF-8">
 <title>Input Tagihan PLN</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
 <style>
     body {
         font-family: Arial, sans-serif;
         font-size: 14px;
+        margin: 0;
         padding: 20px;
+        background: #f0f2f5;
+        display: flex;
+        justify-content: center;   /* center horizontal */
+        align-items: flex-start;   /* dari atas, bukan tengah persis */
+        min-height: 100vh;
     }
 
     h2 {
         margin-bottom: 15px;
+        text-align: center;
+    }
+
+    .form-container {
+        width: 100%;
+        max-width: 650px;
+        padding: 20px 24px;
+        border: 1px solid #444;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
 
     .form-group {
         display: flex;
         align-items: center;
         margin-bottom: 10px;
+        gap: 8px;
     }
 
     .form-group label {
@@ -92,31 +112,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         border-radius: 4px;
     }
 
-    .form-container {
-        max-width: 600px;
-        padding: 20px;
-        border: 1px solid #444;
-        border-radius: 6px;
-        background: #f9f9f9;
-    }
+    /* Responsif: di layar kecil label di atas input */
+    @media (max-width: 576px) {
+        body {
+            padding: 10px;
+        }
 
-    button {
-        padding: 8px 16px;
-        border: none;
-        background: #333;
-        color: white;
-        border-radius: 4px;
-        cursor: pointer;
-        margin-top: 10px;
-    }
+        .form-container {
+            padding: 16px;
+        }
 
-    button:hover {
-        background: #000;
+        .form-group {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .form-group label {
+            width: 100%;
+        }
+
+        .form-group input {
+            width: 100%;
+        }
     }
 </style>
+</head>
+<body>
+
 <div class="form-container">
-    <a href="index.php" class="btn btn-link">&larr; Kembali</a>
+
+    <!-- tombol navigasi -->
+    <div class="d-flex justify-content-between mb-3">
+        <a href="index.php" class="btn btn-primary">&larr; Kembali</a>
+        <a href="list_tagihan.php" class="btn btn-success">📄 List Tagihan</a>
+    </div>
+
     <h2>Input Tagihan Listrik PLN</h2>
+
     <form method="post">
 
         <div class="form-group">
@@ -189,10 +221,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input type="number" name="admin_bank" required>
         </div>
 
-        <button type="submit">Simpan & Cetak Nota</button>
+        <div class="text-end mt-3">
+            <button type="submit" class="btn btn-secondary">
+                Simpan &amp; Cetak Nota
+            </button>
+        </div>
     </form>
 </div>
-
 
 </body>
 </html>
