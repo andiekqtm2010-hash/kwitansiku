@@ -96,6 +96,7 @@
        ================================ -->
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="m-0">Kwitansi Mugnesia</h3>
+    <a class="btn btn-primary" href="input_tagihan.php">+ Buat Kwitansi PLN PASCA</a>
     <a class="btn btn-primary" href="kwitansi_form.php">+ Buat Kwitansi</a>
   </div>
 
