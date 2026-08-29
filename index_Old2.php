@@ -16,26 +16,6 @@
     $search = trim($_GET['q'] ?? "");
 
     // ================================
-    // 2a) Sorting kolom grid
-    //     - Hanya kolom yang ada di whitelist yang boleh dipakai
-    //     - Default: data terbaru berdasarkan id DESC
-    // ================================
-    $allowed_sort = [
-        'no_kwitansi'    => 'no_kwitansi',
-        'tanggal'        => 'tanggal',
-        'nama_pelanggan' => 'nama_pelanggan',
-        'status_bayar'   => 'status_bayar',
-        'discount'       => 'discount',
-        'total'          => 'total'
-    ];
-
-    $sort = $_GET['sort'] ?? 'id';
-    $dir  = strtolower($_GET['dir'] ?? 'desc');
-    $dir  = $dir === 'asc' ? 'ASC' : 'DESC';
-
-    $orderBy = isset($allowed_sort[$sort]) ? $allowed_sort[$sort] : 'id';
-
-    // ================================
     // 3) Query dasar
     // ================================
     $sql = "SELECT * FROM kwitansi ";
@@ -78,7 +58,7 @@
     // ================================
     // 6) Query data utama
     // ================================
-    $sql .= "ORDER BY {$orderBy} {$dir} LIMIT ? OFFSET ?";
+    $sql .= "ORDER BY id DESC LIMIT ? OFFSET ?";
     $stmt = $conn->prepare($sql);
     if ($types) {
         $types2 = $types . "ii";
@@ -95,32 +75,8 @@
     $end_row = min($offset + $limit, $count);
 
     // Helper URL pagination agar q dan ps tetap terbawa
-    function pageUrl($targetPage, $search, $limit, $sort, $dir) {
-        return '?page=' . (int)$targetPage
-            . '&q=' . urlencode($search)
-            . '&ps=' . (int)$limit
-            . '&sort=' . urlencode($sort)
-            . '&dir=' . urlencode(strtolower($dir));
-    }
-
-    // Helper URL untuk klik header sorting
-    function sortUrl($column, $currentSort, $currentDir, $search, $limit) {
-        $nextDir = ($currentSort === $column && strtoupper($currentDir) === 'ASC') ? 'desc' : 'asc';
-        return '?page=1'
-            . '&q=' . urlencode($search)
-            . '&ps=' . (int)$limit
-            . '&sort=' . urlencode($column)
-            . '&dir=' . $nextDir;
-    }
-
-    // Helper icon sorting
-    function sortIcon($column, $currentSort, $currentDir) {
-        if ($currentSort !== $column) {
-            return '<i class="bi bi-arrow-down-up sort-icon"></i>';
-        }
-        return strtoupper($currentDir) === 'ASC'
-            ? '<i class="bi bi-sort-up sort-icon active"></i>'
-            : '<i class="bi bi-sort-down sort-icon active"></i>';
+    function pageUrl($targetPage, $search, $limit) {
+        return '?page=' . (int)$targetPage . '&q=' . urlencode($search) . '&ps=' . (int)$limit;
     }
 ?>
 <!doctype html>
@@ -295,32 +251,6 @@
     font-size:13px;
   }
 
-  /* =========================================================
-     SORTING HEADER GRID
-     Klik judul kolom untuk ASC / DESC
-     ========================================================= */
-  .sort-link {
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    color:inherit;
-    text-decoration:none;
-  }
-
-  .sort-link:hover {
-    color:#0d6efd;
-  }
-
-  .sort-icon {
-    font-size:12px;
-    opacity:.35;
-  }
-
-  .sort-icon.active {
-    opacity:1;
-    color:#0d6efd;
-  }
-
   @media (max-width: 767.98px) {
     .page-title { font-size:23px; }
     .header-actions { width:100%; }
@@ -366,7 +296,7 @@
                  value="<?= htmlspecialchars($search) ?>">
           <button class="btn btn-primary px-4" type="submit">Cari</button>
           <?php if ($search !== ''): ?>
-            <a class="btn btn-outline-secondary" href="?ps=<?= $limit ?>&sort=<?= urlencode($sort) ?>&dir=<?= urlencode(strtolower($dir)) ?>" title="Reset pencarian">
+            <a class="btn btn-outline-secondary" href="?ps=<?= $limit ?>" title="Reset pencarian">
               <i class="bi bi-x-lg"></i>
             </a>
           <?php endif; ?>
@@ -381,8 +311,6 @@
               <option value="<?=$s?>" <?=$s==$limit?'selected':''?>><?=$s?> / halaman</option>
             <?php endforeach; ?>
           </select>
-          <input type="hidden" name="sort" value="<?= htmlspecialchars($sort) ?>">
-          <input type="hidden" name="dir" value="<?= htmlspecialchars(strtolower($dir)) ?>">
           <input type="hidden" name="page" value="1">
         </div>
       </div>
@@ -414,37 +342,13 @@
       <table class="table table-hover align-middle">
         <thead>
           <tr>
-            <th>
-              <a class="sort-link" href="<?= sortUrl('no_kwitansi', $sort, $dir, $search, $limit) ?>">
-                No Kwitansi <?= sortIcon('no_kwitansi', $sort, $dir) ?>
-              </a>
-            </th>
-            <th>
-              <a class="sort-link" href="<?= sortUrl('tanggal', $sort, $dir, $search, $limit) ?>">
-                Tanggal <?= sortIcon('tanggal', $sort, $dir) ?>
-              </a>
-            </th>
-            <th>
-              <a class="sort-link" href="<?= sortUrl('nama_pelanggan', $sort, $dir, $search, $limit) ?>">
-                Nama Pelanggan <?= sortIcon('nama_pelanggan', $sort, $dir) ?>
-              </a>
-            </th>
+            <th>No Kwitansi</th>
+            <th>Tanggal</th>
+            <th>Nama Pelanggan</th>
             <th>Catatan</th>
-            <th>
-              <a class="sort-link" href="<?= sortUrl('status_bayar', $sort, $dir, $search, $limit) ?>">
-                Status Bayar <?= sortIcon('status_bayar', $sort, $dir) ?>
-              </a>
-            </th>
-            <th class="text-end">
-              <a class="sort-link justify-content-end" href="<?= sortUrl('discount', $sort, $dir, $search, $limit) ?>">
-                Discount <?= sortIcon('discount', $sort, $dir) ?>
-              </a>
-            </th>
-            <th class="text-end">
-              <a class="sort-link justify-content-end" href="<?= sortUrl('total', $sort, $dir, $search, $limit) ?>">
-                Total <?= sortIcon('total', $sort, $dir) ?>
-              </a>
-            </th>
+            <th>Status Bayar</th>
+            <th class="text-end">Discount</th>
+            <th class="text-end">Total</th>
             <th class="text-center">Aksi</th>
           </tr>
         </thead>
@@ -523,7 +427,7 @@
         <nav aria-label="Pagination kwitansi">
           <ul class="pagination pagination-sm">
             <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
-              <a class="page-link" href="<?= pageUrl(max(1,$page-1), $search, $limit, $sort, $dir) ?>" aria-label="Sebelumnya">
+              <a class="page-link" href="<?= pageUrl(max(1,$page-1), $search, $limit) ?>" aria-label="Sebelumnya">
                 <i class="bi bi-chevron-left"></i>
               </a>
             </li>
@@ -545,13 +449,13 @@
                 <li class="page-item disabled"><span class="page-link">…</span></li>
               <?php endif; ?>
               <li class="page-item <?= $i == $page ? 'active' : '' ?>">
-                <a class="page-link" href="<?= pageUrl($i, $search, $limit, $sort, $dir) ?>"><?= $i ?></a>
+                <a class="page-link" href="<?= pageUrl($i, $search, $limit) ?>"><?= $i ?></a>
               </li>
               <?php $prevShown = $i; ?>
             <?php endforeach; ?>
 
             <li class="page-item <?= $page >= $total_pages ? 'disabled' : '' ?>">
-              <a class="page-link" href="<?= pageUrl(min($total_pages,$page+1), $search, $limit, $sort, $dir) ?>" aria-label="Berikutnya">
+              <a class="page-link" href="<?= pageUrl(min($total_pages,$page+1), $search, $limit) ?>" aria-label="Berikutnya">
                 <i class="bi bi-chevron-right"></i>
               </a>
             </li>

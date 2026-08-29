@@ -104,7 +104,7 @@ $result = $stmt->get_result();
 
 <div class="top-menu">
     <a href="input_tagihan.php">➕ Input Tagihan</a> |
-    <a href="list_tagihan.php">📄 List Data Tagihan</a>
+    <a href="index.php">📄 Dashboard</a>
 </div>
 
 <h2>List Data Tagihan Listrik</h2>

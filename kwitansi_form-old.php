@@ -65,28 +65,9 @@ require_once "db.php";
           <tbody id="itemsBody">
           </tbody>
           <tfoot>
-            <!-- ============================================================
-                 DISCOUNT & TOTAL AKHIR
-                 - Discount dapat langsung diisi saat membuat kwitansi
-                 - Total akhir = jumlah subtotal - discount
-                 ============================================================ -->
-            <tr>
-              <th colspan="2"></th>
-              <th class="text-end">Discount</th>
-              <th>
-                <input type="number"
-                       class="form-control text-end"
-                       id="discount"
-                       name="discount"
-                       value="0"
-                       min="0"
-                       step="1">
-              </th>
-              <th></th>
-            </tr>
             <tr>
               <th colspan="3" class="text-end">Total</th>
-              <th><input type="text" class="form-control fw-bold" id="total" name="total" readonly></th>
+              <th><input type="text" class="form-control" id="total" name="total" readonly></th>
               <th></th>
             </tr>
           </tfoot>
@@ -125,32 +106,19 @@ function bindRow(tr){
 }
 
 function hitung(){
-  let totalBruto = 0;
-
-  // Hitung seluruh subtotal item
+  let total = 0;
   document.querySelectorAll('#itemsBody tr').forEach(tr=>{
     const qty = parseInt(tr.querySelector('.qty').value||0);
     const harga = parseNum(tr.querySelector('.harga').value);
     const sub = qty * harga;
     tr.querySelector('.subtotal').value = rupiah(sub);
-    totalBruto += sub;
+    total += sub;
   });
-
-  // ============================================================
-  // DISCOUNT
-  // Total akhir = total bruto - discount
-  // ============================================================
-  const discount = parseNum(document.getElementById('discount')?.value || 0);
-  const totalAkhir = Math.max(totalBruto - discount, 0);
-
-  document.getElementById('total').value = rupiah(totalAkhir);
+  document.getElementById('total').value = rupiah(total);
 }
 
 document.addEventListener('DOMContentLoaded', ()=>{
   addRow('Kaos', 1, 0);
-
-  // Hitung ulang otomatis saat discount berubah
-  document.getElementById('discount')?.addEventListener('input', hitung);
 });
 </script>
 </body>

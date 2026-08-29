@@ -11,27 +11,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nama = trim($_POST['nama_pelanggan'] ?? '');
     $alamat = trim($_POST['alamat_pelanggan'] ?? '');
     $catatan = trim($_POST['catatan'] ?? '');
-    $status_bayar = trim($_POST['status_bayar'] ?? '');
-
-    // ============================================================
-    // DISCOUNT DARI FORM KWITANSI BARU
-    // - Nilai discount dikirim dari field name="discount"
-    // - Konversi ke angka agar aman dipakai dalam perhitungan
-    // - Tidak mengizinkan discount negatif
-    // ============================================================
-    $discount = max(0, rupiah_to_number($_POST['discount'] ?? '0'));
+    $status_bayar=trim($_POST['status_bayar'] ?? '');
 
     $deskripsi = $_POST['deskripsi'] ?? [];
     $qty = $_POST['qty'] ?? [];
     $harga = $_POST['harga'] ?? [];
     $subtotal = $_POST['subtotal'] ?? [];
 
-    // ============================================================
-    // HITUNG TOTAL SERVER-SIDE
-    // $total_bruto = jumlah seluruh subtotal item sebelum discount
-    // $total       = nilai akhir setelah dikurangi discount
-    // ============================================================
-    $total_bruto = 0;
+    // hitung total server-side
+    $total = 0;
     $items = [];
     for ($i=0; $i<count($deskripsi); $i++) {
         $d = trim($deskripsi[$i] ?? '');
@@ -39,15 +27,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $q = max(1, (int)($qty[$i] ?? 0));
         $h = rupiah_to_number($harga[$i] ?? '0');
         $sub = $q * $h;
-        $total_bruto += $sub;
+        $total += $sub;
         $items[] = [$d, $q, $h, $sub];
     }
     if (empty($items)) {
         die("Item tidak boleh kosong. <a href='kwitansi_form.php'>Kembali</a>");
     }
-
-    // Nilai akhir tidak boleh minus walaupun discount lebih besar dari bruto
-    $total = max(0, $total_bruto - $discount);
 
     // generate no kwitansi: KWT/9/2025/00001
     $bulan = date('n', strtotime($tanggal));
@@ -70,26 +55,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nomor_urut = str_pad($next, 5, "0", STR_PAD_LEFT);
     $no_kwitansi = "KWT/$bulan/$tahun/$nomor_urut";
 
-    // ============================================================
-    // INSERT HEADER KWITANSI
-    // Simpan discount dan total akhir langsung saat kwitansi dibuat
-    // ============================================================
-    $stmt = $conn->prepare(
-        "INSERT INTO kwitansi
-        (no_kwitansi, tanggal, nama_pelanggan, alamat_pelanggan, catatan, status_bayar, discount, total)
-        VALUES (?,?,?,?,?,?,?,?)"
-    );
-    $stmt->bind_param(
-        "ssssssdd",
-        $no_kwitansi,
-        $tanggal,
-        $nama,
-        $alamat,
-        $catatan,
-        $status_bayar,
-        $discount,
-        $total
-    );
+    // insert header
+    $stmt = $conn->prepare("INSERT INTO kwitansi (no_kwitansi, tanggal, nama_pelanggan, alamat_pelanggan, catatan, status_bayar, total ) VALUES (?,?,?,?,?,?,?)");
+    $stmt->bind_param("ssssssd", $no_kwitansi, $tanggal, $nama, $alamat, $catatan, $status_bayar, $total );
     $stmt->execute();
     $kwitansi_id = $stmt->insert_id;
     $stmt->close();
