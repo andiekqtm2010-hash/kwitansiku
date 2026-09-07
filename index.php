@@ -345,6 +345,11 @@
       <a class="btn btn-outline-primary" href="input_tagihan.php">
         <i class="bi bi-lightning-charge me-1"></i> PLN PASCA
       </a>
+
+      <a class="btn btn-outline-success" href="input_bpjs.php">
+        <i class="bi bi-heart-pulse me-1"></i> BPJS
+      </a>
+
       <a class="btn btn-primary" href="kwitansi_form.php">
         <i class="bi bi-plus-lg me-1"></i> Buat Kwitansi
       </a>

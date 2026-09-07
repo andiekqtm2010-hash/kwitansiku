@@ -91,7 +91,9 @@ $RH = is_numeric($_GET['rh'] ?? null) ? max(5, min(21, (float)$_GET['rh'])) : 10
     ============================================================ */
   .receipt {
       width: <?= $RW ?>cm;
-      height: <?= $RH ?>cm;
+      /* height: <?= $RH ?>cm; */
+      height:auto;
+      min-height:7 cm;
 
       border:1px solid #cfd8dc;
       background:#fff;
@@ -113,7 +115,7 @@ $RH = is_numeric($_GET['rh'] ?? null) ? max(5, min(21, (float)$_GET['rh'])) : 10
 
   .brand { color:#1c4fa8; font-weight:800; letter-spacing:.3px; font-size:18px; margin-bottom:3mm; }
   .hdr td { padding:1mm 0; vertical-align:top; }
-  .logo { width:34mm; height:auto; object-fit:contain; border:1px solid #eee; padding:3mm; background:#fff; }
+  .logo { width:34mm; height:auto; object-fit:contain; border:none; solid #eee; padding:3mm; background:#fff; }
 
   table.kwt { width:100%; border-collapse:collapse; }
   .kwt th, .kwt td { border:1px solid #d8e0e6; padding:2.8mm 3mm; }
@@ -165,7 +167,7 @@ $RH = is_numeric($_GET['rh'] ?? null) ? max(5, min(21, (float)$_GET['rh'])) : 10
      ====================== -->
 <div class="no-print d-flex justify-content-end gap-2" style="max-width:21cm;margin:10px auto 0;">
   <a href="index.php" class="btn btn-outline-secondary btn-sm">Kembali</a>
-  <button class="btn btn-primary btn-sm" onclick="window.print()">Print A4</button>
+  <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
   <div class="btn btn-light btn-sm disabled">Area kwitansi: <?= $RW ?>cm × <?= $RH ?>cm</div>
 </div>
 
@@ -208,16 +210,18 @@ $RH = is_numeric($_GET['rh'] ?? null) ? max(5, min(21, (float)$_GET['rh'])) : 10
         <table>
           <tr style="border:0px solid #0f0f0f;">
             <td style="width:26mm">Pelanggan</td>
-            <td style="width:30%">: <?= htmlspecialchars($head['nama_pelanggan']) ?></td>
-            <td>Status</td>
-            <td style="width:26mm">: <?= htmlspecialchars($head['status_bayar']) ?></td>
+            <td style="padding-ledt:0">: <?= htmlspecialchars($head['nama_pelanggan']) ?></td>
           </tr>
         </table>
       </div>
 
-      <!-- Logo (opsional) -->
+      <!-- Logo & status (opsional) -->
       <div class="text-end">
         <img src="LogoInvoice.png" alt="logo" class="logo">
+        <div style="margin-top:1mm; display:flex; justify-content:flex-end; align-items:center; gap:2mm; font-size:12px; white-space:nowrap;">
+          <span>Status :</span>
+          <strong><?= htmlspecialchars($head['status_bayar']) ?></strong>
+        </div>
       </div>
     </div>
 
