@@ -29,6 +29,66 @@ function rupiah_to_number($value)
 
 
 // ============================================================
+// HELPER NOMOR TRANSAKSI BPJS
+// Format: BPJS/KCM/YYYY/MM/00001
+// Nomor urut reset setiap bulan.
+// ============================================================
+function next_bpjs_transaction_id($conn, $tgl_bayar, $exclude_id = 0)
+{
+    $ts = strtotime($tgl_bayar);
+    if ($ts === false) $ts = time();
+
+    $year   = date('Y', $ts);
+    $month  = date('m', $ts);
+    $prefix = "BPJS/KCM/{$year}/{$month}/";
+
+    $sql = "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(id_transaksi, '/', -1) AS UNSIGNED)), 0) AS nomor_terakhir
+            FROM tb_tagihan_bpjs
+            WHERE id_transaksi LIKE ?";
+
+    if ($exclude_id > 0) $sql .= " AND id <> ?";
+
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) die("Gagal membuat nomor transaksi: " . $conn->error);
+
+    $like = $prefix . '%';
+    if ($exclude_id > 0) $stmt->bind_param('si', $like, $exclude_id);
+    else $stmt->bind_param('s', $like);
+
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    $next = ((int)($row['nomor_terakhir'] ?? 0)) + 1;
+    return $prefix . str_pad((string)$next, 5, '0', STR_PAD_LEFT);
+}
+
+// Endpoint kecil untuk memperbarui preview ID saat tanggal di form berubah.
+if (isset($_GET['ajax_next_id'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $tgl = trim($_GET['tgl'] ?? '');
+    $exclude = (int)($_GET['exclude_id'] ?? 0);
+    echo json_encode(['id_transaksi' => next_bpjs_transaction_id($conn, $tgl, $exclude)]);
+    exit;
+}
+
+// ============================================================
+// MODE EDIT: ambil data lama berdasarkan ?edit=ID
+// ============================================================
+$edit_id = isset($_GET['edit']) ? (int)$_GET['edit'] : (int)($_POST['edit_id'] ?? 0);
+$edit_data = null;
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $edit_id > 0) {
+    $stmt_edit = $conn->prepare("SELECT id, id_transaksi, tgl_bayar, no_polis, nama, jml_peserta, periode, rp_tagihan, admin_bank, total_bayar, keterangan, cetak_keterangan FROM tb_tagihan_bpjs WHERE id = ? LIMIT 1");
+    if (!$stmt_edit) die("Gagal menyiapkan data edit: " . $conn->error);
+    $stmt_edit->bind_param("i", $edit_id);
+    $stmt_edit->execute();
+    $edit_data = $stmt_edit->get_result()->fetch_assoc();
+    $stmt_edit->close();
+    if (!$edit_data) die("Data transaksi BPJS tidak ditemukan.");
+}
+
+// ============================================================
 // 2) PROSES SIMPAN TRANSAKSI BPJS
 // Bagian ini hanya dijalankan saat form dikirim menggunakan POST.
 // ============================================================
@@ -48,6 +108,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         : strtoupper($nama);
     $jml_peserta  = max(1, (int)($_POST['jml_peserta'] ?? 1));
     $periode      = trim($_POST['periode'] ?? '');
+    $keterangan   = trim($_POST['keterangan'] ?? '');
+    $cetak_keterangan = isset($_POST['cetak_keterangan']) ? 1 : 0;
 
     // Nilai uang dibersihkan agar aman untuk perhitungan server-side.
     $rp_tagihan   = max(0, rupiah_to_number($_POST['rp_tagihan'] ?? 0));
@@ -71,47 +133,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // --------------------------------------------------------
     $tgl_bayar_dt = date('Y-m-d H:i:s', strtotime($tgl_bayar));
 
+    // ID transaksi tidak dipercaya dari browser. Server menentukan sendiri.
+    if ($edit_id > 0) {
+        $stmt_id = $conn->prepare("SELECT id_transaksi FROM tb_tagihan_bpjs WHERE id=? LIMIT 1");
+        if (!$stmt_id) die("Gagal membaca ID transaksi: " . $conn->error);
+        $stmt_id->bind_param('i', $edit_id);
+        $stmt_id->execute();
+        $old_id = $stmt_id->get_result()->fetch_assoc();
+        $stmt_id->close();
+        $id_transaksi = trim((string)($old_id['id_transaksi'] ?? ''));
+        // Data lama yang belum punya ID akan mendapat ID saat pertama kali diedit.
+        if ($id_transaksi === '') {
+            $id_transaksi = next_bpjs_transaction_id($conn, $tgl_bayar_dt, $edit_id);
+        }
+    } else {
+        $id_transaksi = next_bpjs_transaction_id($conn, $tgl_bayar_dt);
+    }
+
     // --------------------------------------------------------
     // 2e) Simpan data ke tabel tb_tagihan_bpjs
     // Menggunakan prepared statement agar lebih aman.
     // --------------------------------------------------------
-    $sql = "INSERT INTO tb_tagihan_bpjs
-            (
-                tgl_bayar,
-                no_polis,
-                nama,
-                jml_peserta,
-                periode,
-                rp_tagihan,
-                admin_bank,
-                total_bayar
-            )
-            VALUES (?,?,?,?,?,?,?,?)";
-
-    $stmt = $conn->prepare($sql);
-
-    if (!$stmt) {
-        die("Gagal menyiapkan query: " . $conn->error);
+    if ($edit_id > 0) {
+        $sql = "UPDATE tb_tagihan_bpjs SET id_transaksi=?, tgl_bayar=?, no_polis=?, nama=?, jml_peserta=?, periode=?, rp_tagihan=?, admin_bank=?, total_bayar=?, keterangan=?, cetak_keterangan=? WHERE id=?";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) die("Gagal menyiapkan query: " . $conn->error);
+        $stmt->bind_param("ssssisiiisii", $id_transaksi, $tgl_bayar_dt, $no_polis, $nama, $jml_peserta, $periode, $rp_tagihan, $admin_bank, $total_bayar, $keterangan, $cetak_keterangan, $edit_id);
+    } else {
+        $sql = "INSERT INTO tb_tagihan_bpjs (id_transaksi, tgl_bayar, no_polis, nama, jml_peserta, periode, rp_tagihan, admin_bank, total_bayar, keterangan, cetak_keterangan) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) die("Gagal menyiapkan query: " . $conn->error);
+        $stmt->bind_param("ssssisiiisi", $id_transaksi, $tgl_bayar_dt, $no_polis, $nama, $jml_peserta, $periode, $rp_tagihan, $admin_bank, $total_bayar, $keterangan, $cetak_keterangan);
     }
-
-    $stmt->bind_param(
-        "sssissii",
-        $tgl_bayar_dt,
-        $no_polis,
-        $nama,
-        $jml_peserta,
-        $periode,
-        $rp_tagihan,
-        $admin_bank,
-        $total_bayar
-    );
 
     // --------------------------------------------------------
     // 2f) Jika penyimpanan berhasil, buka nota BPJS
     // --------------------------------------------------------
     if ($stmt->execute()) {
 
-        $last_id = $stmt->insert_id;
+        $last_id = $edit_id > 0 ? $edit_id : $stmt->insert_id;
         $stmt->close();
 
         header("Location: nota_bpjs.php?id=" . $last_id);
@@ -136,6 +196,19 @@ date_default_timezone_set('Asia/Jakarta');
 
 $default_datetime = date('Y-m-d\TH:i');
 $default_admin    = 2500;
+$is_edit          = $edit_data !== null;
+$form_datetime    = $is_edit ? date('Y-m-d\TH:i', strtotime($edit_data['tgl_bayar'])) : $default_datetime;
+$form_no_polis    = $is_edit ? $edit_data['no_polis'] : '';
+$form_nama        = $is_edit ? $edit_data['nama'] : '';
+$form_jml_peserta = $is_edit ? (int)$edit_data['jml_peserta'] : 1;
+$form_periode     = $is_edit ? $edit_data['periode'] : '1 Bulan';
+$form_tagihan     = $is_edit ? (int)$edit_data['rp_tagihan'] : 0;
+$form_admin       = $is_edit ? (int)$edit_data['admin_bank'] : $default_admin;
+$form_keterangan  = $is_edit ? (string)($edit_data['keterangan'] ?? '') : '';
+$form_cetak_keterangan = $is_edit ? (int)($edit_data['cetak_keterangan'] ?? 0) : 0;
+$form_id_transaksi = $is_edit && trim((string)($edit_data['id_transaksi'] ?? '')) !== ''
+    ? $edit_data['id_transaksi']
+    : next_bpjs_transaction_id($conn, $form_datetime, $is_edit ? (int)$edit_data['id'] : 0);
 ?>
 <!doctype html>
 <html lang="id">
@@ -345,6 +418,7 @@ $default_admin    = 2500;
     <div class="bpjs-body">
 
         <form method="post" id="formBpjs">
+            <input type="hidden" name="edit_id" value="<?= $is_edit ? (int)$edit_data['id'] : 0 ?>">
 
             <!-- =================================================
                  13a) INFORMASI TRANSAKSI
@@ -355,6 +429,14 @@ $default_admin    = 2500;
 
             <div class="row g-3">
 
+                <!-- ID transaksi otomatis -->
+                <div class="col-12">
+                    <label class="form-label">ID Transaksi BPJS</label>
+                    <input type="text" class="form-control fw-bold" id="id_transaksi_display"
+                           value="<?= htmlspecialchars($form_id_transaksi) ?>" disabled>
+                    <div class="form-text">Otomatis mengikuti tahun, bulan, dan nomor urut transaksi. Tidak dapat diedit.</div>
+                </div>
+
                 <!-- Tanggal dan jam pembayaran -->
                 <div class="col-md-6">
                     <label class="form-label">Tanggal / Jam Bayar</label>
@@ -362,8 +444,9 @@ $default_admin    = 2500;
                     <input
                         type="datetime-local"
                         class="form-control"
+                        id="tgl_bayar"
                         name="tgl_bayar"
-                        value="<?= htmlspecialchars($default_datetime) ?>"
+                        value="<?= htmlspecialchars($form_datetime) ?>"
                         required>
                 </div>
 
@@ -376,6 +459,7 @@ $default_admin    = 2500;
                         class="form-control"
                         name="no_polis"
                         placeholder="Masukkan nomor polis / peserta"
+                        value="<?= htmlspecialchars($form_no_polis) ?>"
                         required>
                 </div>
 
@@ -389,6 +473,7 @@ $default_admin    = 2500;
                         id="nama"
                         name="nama"
                         placeholder="Nama peserta BPJS"
+                        value="<?= htmlspecialchars($form_nama) ?>"
                         style="text-transform: uppercase;"
                         required>
                 </div>
@@ -401,7 +486,7 @@ $default_admin    = 2500;
                         type="number"
                         class="form-control text-end"
                         name="jml_peserta"
-                        value="1"
+                        value="<?= $form_jml_peserta ?>"
                         min="1"
                         required>
                 </div>
@@ -414,7 +499,7 @@ $default_admin    = 2500;
                         type="text"
                         class="form-control"
                         name="periode"
-                        value="1 Bulan"
+                        value="<?= htmlspecialchars($form_periode) ?>"
                         placeholder="1 Bulan">
                 </div>
 
@@ -442,7 +527,7 @@ $default_admin    = 2500;
                             class="form-control text-end money-input"
                             id="rp_tagihan"
                             name="rp_tagihan"
-                            value="0"
+                            value="<?= number_format($form_tagihan, 0, ',', '.') ?>"
                             inputmode="numeric"
                             required>
                     </div>
@@ -461,7 +546,7 @@ $default_admin    = 2500;
                             class="form-control text-end money-input"
                             id="admin_bank"
                             name="admin_bank"
-                            value="<?= number_format($default_admin, 0, ',', '.') ?>"
+                            value="<?= number_format($form_admin, 0, ',', '.') ?>"
                             inputmode="numeric"
                             required>
                     </div>
@@ -471,6 +556,21 @@ $default_admin    = 2500;
                     </div>
                 </div>
 
+            </div>
+
+            <div class="mt-3">
+                <label class="form-label">Keterangan</label>
+                <input type="text" class="form-control" name="keterangan" maxlength="255"
+                       value="<?= htmlspecialchars($form_keterangan) ?>"
+                       placeholder="Keterangan tambahan (opsional)">
+
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" value="1" id="cetak_keterangan"
+                           name="cetak_keterangan" <?= $form_cetak_keterangan ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="cetak_keterangan">
+                        Tampilkan keterangan pada nota BPJS
+                    </label>
+                </div>
             </div>
 
 
@@ -528,7 +628,7 @@ $default_admin    = 2500;
                     type="submit"
                     class="btn btn-success px-4">
                     <i class="bi bi-floppy me-1"></i>
-                    Simpan & Cetak Nota BPJS
+                    <?= $is_edit ? 'Simpan Perubahan & Cetak Nota' : 'Simpan & Cetak Nota BPJS' ?>
                 </button>
 
             </div>
@@ -625,6 +725,32 @@ document.addEventListener('DOMContentLoaded', function () {
     const adminInput   = document.getElementById('admin_bank');
     const namaInput    = document.getElementById('nama');
     const formBpjs     = document.getElementById('formBpjs');
+    const tglBayarInput = document.getElementById('tgl_bayar');
+    const idDisplay     = document.getElementById('id_transaksi_display');
+
+
+    // Preview ID mengikuti bulan/tahun pada tanggal transaksi.
+    async function refreshTransactionId() {
+        <?php if ($is_edit && trim((string)($edit_data['id_transaksi'] ?? '')) !== ''): ?>
+        // Pada transaksi yang sudah memiliki ID, ID tetap dan tidak berubah saat edit.
+        return;
+        <?php else: ?>
+        try {
+            const params = new URLSearchParams({
+                ajax_next_id: '1',
+                tgl: tglBayarInput.value,
+                exclude_id: '<?= $is_edit ? (int)$edit_data['id'] : 0 ?>'
+            });
+            const response = await fetch('input_bpjs.php?' + params.toString());
+            const data = await response.json();
+            if (data.id_transaksi) idDisplay.value = data.id_transaksi;
+        } catch (e) {
+            console.error('Gagal memperbarui preview ID transaksi', e);
+        }
+        <?php endif; ?>
+    }
+
+    tglBayarInput.addEventListener('change', refreshTransactionId);
 
     // --------------------------------------------------------
     // Nama peserta selalu diubah menjadi HURUF BESAR saat diketik.
@@ -654,7 +780,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // browser mengembalikan field ke value awal,
     // lalu total dihitung ulang setelah reset selesai.
     // --------------------------------------------------------
-    formBpjs.addEventListener('reset', function () {
+    formBpjs.addEventListener('reset', function (event) {
+
+        <?php if ($is_edit): ?>
+        event.preventDefault();
+        window.location.reload();
+        return;
+        <?php endif; ?>
 
         setTimeout(function () {
 

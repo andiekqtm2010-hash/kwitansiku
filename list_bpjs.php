@@ -33,6 +33,7 @@ $search = trim($_GET['q'] ?? '');
 // Hanya kolom dalam whitelist yang boleh dipakai pada ORDER BY.
 // ============================================================
 $allowed_sort = [
+    'id_transaksi' => 'id_transaksi',
     'tgl_bayar'    => 'tgl_bayar',
     'no_polis'     => 'no_polis',
     'nama'         => 'nama',
@@ -58,13 +59,14 @@ $params = [];
 $types  = '';
 
 if ($search !== '') {
-    $where = " WHERE no_polis LIKE ?
+    $where = " WHERE id_transaksi LIKE ?
+               OR no_polis LIKE ?
                OR nama LIKE ?
                OR periode LIKE ? ";
 
     $keyword = "%{$search}%";
-    $params = [$keyword, $keyword, $keyword];
-    $types  = "sss";
+    $params = [$keyword, $keyword, $keyword, $keyword];
+    $types  = "ssss";
 }
 
 
@@ -95,6 +97,7 @@ if ($page > $total_pages) {
 // ============================================================
 $sql = "SELECT
             id,
+            id_transaksi,
             tgl_bayar,
             no_polis,
             nama,
@@ -102,7 +105,8 @@ $sql = "SELECT
             periode,
             rp_tagihan,
             admin_bank,
-            total_bayar
+            total_bayar,
+            keterangan
         FROM tb_tagihan_bpjs
         {$where}
         ORDER BY {$orderBy} {$dir}, id DESC
@@ -471,7 +475,7 @@ function sortIcon($column, $currentSort, $currentDir)
                         type="text"
                         class="form-control"
                         name="q"
-                        placeholder="Cari nomor polis, nama peserta, atau periode..."
+                        placeholder="Cari ID transaksi, nomor polis, nama peserta, atau periode..."
                         value="<?= htmlspecialchars($search) ?>">
 
                     <button class="btn btn-primary px-4" type="submit">
@@ -562,6 +566,13 @@ function sortIcon($column, $currentSort, $currentDir)
                     <tr>
 
                         <th>
+                            <a class="sort-link" href="<?= sortUrl('id_transaksi', $sort, $dir, $search, $limit) ?>">
+                                ID Transaksi
+                                <?= sortIcon('id_transaksi', $sort, $dir) ?>
+                            </a>
+                        </th>
+
+                        <th>
                             <a class="sort-link" href="<?= sortUrl('tgl_bayar', $sort, $dir, $search, $limit) ?>">
                                 Tanggal
                                 <?= sortIcon('tgl_bayar', $sort, $dir) ?>
@@ -631,6 +642,12 @@ function sortIcon($column, $currentSort, $currentDir)
 
                         <tr>
 
+                            <td class="text-nowrap fw-bold">
+                                <?= trim((string)($row['id_transaksi'] ?? '')) !== ''
+                                    ? htmlspecialchars($row['id_transaksi'])
+                                    : '<span class="text-muted">-</span>' ?>
+                            </td>
+
                             <td class="text-nowrap">
                                 <?= date('d/m/Y H:i', strtotime($row['tgl_bayar'])) ?>
                             </td>
@@ -671,6 +688,14 @@ function sortIcon($column, $currentSort, $currentDir)
 
                                 <div class="d-inline-flex gap-1">
 
+                                    <!-- EDIT DATA BPJS -->
+                                    <a
+                                        class="btn btn-outline-secondary btn-sm action-btn"
+                                        href="input_bpjs.php?edit=<?= (int)$row['id'] ?>"
+                                        title="Edit transaksi BPJS">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </a>
+
                                     <!-- CETAK NOTA BPJS -->
                                     <a
                                         class="btn btn-outline-primary btn-sm action-btn"
@@ -707,7 +732,7 @@ function sortIcon($column, $currentSort, $currentDir)
                     <?php if ($res->num_rows === 0): ?>
 
                         <tr>
-                            <td colspan="9" class="text-center py-5 text-muted">
+                            <td colspan="10" class="text-center py-5 text-muted">
 
                                 <i class="bi bi-inbox fs-2 d-block mb-2"></i>
 

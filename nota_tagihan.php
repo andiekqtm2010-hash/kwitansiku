@@ -23,7 +23,7 @@ $tgl_bayar = date('d-m-Y H:i:s', strtotime($data['tgl_bayar']));
     * { box-sizing: border-box; }
     body {
         font-family: Arial, sans-serif;
-        font-size: 12px;
+        font-size: 14px;
         margin: 0;
         padding: 10px;
     }
@@ -76,7 +76,7 @@ $tgl_bayar = date('d-m-Y H:i:s', strtotime($data['tgl_bayar']));
     }
 
     .info-block {
-        font-size: 11px;
+        font-size: 13px;
         margin-top: 6px;
     }
 
@@ -97,7 +97,7 @@ $tgl_bayar = date('d-m-Y H:i:s', strtotime($data['tgl_bayar']));
         width: 100%;
         border-collapse: collapse;
         margin-top: 12px;
-        font-size: 11px;
+        font-size: 13px;
     }
     table.detail th,
     table.detail td {
@@ -113,7 +113,7 @@ $tgl_bayar = date('d-m-Y H:i:s', strtotime($data['tgl_bayar']));
 
     .footer {
         text-align: center;
-        font-size: 11px;
+        font-size: 13px;
         line-height: 1.4;
         margin-top: 10px;
     }
@@ -144,11 +144,11 @@ $tgl_bayar = date('d-m-Y H:i:s', strtotime($data['tgl_bayar']));
             <div class="header-row">
                 <img src="logo_pln.png" class="logo left">
                 <div class="header-text">
-                    <div>MUGNESIA - AGEN PEMBAYARAN ONLINE</div>
+                    <div class="title">MUGNESIA -  AGEN PEMBAYARAN ONLINE (PPOB) * SABLON KAOS DTF * CETAK MUG</div>
                     <div>KEMANGSEN SELATAN RT.05 RW.02</div>
                     <div class="title">Struk Pembayaran Tagihan Listrik</div>
                 </div>
-                <img src="logo_mugnesia.png" class="logo right">
+                <img src="LogoInvoice.png" class="logo right">
             </div>
         </div>
         <!-- INFO UTAMA -->

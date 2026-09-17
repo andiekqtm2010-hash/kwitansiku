@@ -28,6 +28,7 @@ if ($id <= 0) {
 // ============================================================
 $sql = "SELECT
             id,
+            id_transaksi,
             tgl_bayar,
             no_polis,
             nama,
@@ -35,7 +36,9 @@ $sql = "SELECT
             periode,
             rp_tagihan,
             admin_bank,
-            total_bayar
+            total_bayar,
+            keterangan,
+            cetak_keterangan
         FROM tb_tagihan_bpjs
         WHERE id = ?
         LIMIT 1";
@@ -249,6 +252,34 @@ $jml_peserta       = max(1, (int)$data['jml_peserta']);
         font-weight: 700;
     }
 
+    /* Keterangan dibuat full-width di bawah area 2 kolom.
+       Dengan begitu teks baru turun setelah memakai hampir seluruh lebar nota. */
+    .keterangan-full {
+        display: grid;
+        grid-template-columns: 155px 16px minmax(0, 1fr);
+        width: 100%;
+        margin-top: 2px;
+        font-size: 15px;
+        line-height: 1.25;
+        align-items: start;
+    }
+
+    .keterangan-label {
+        white-space: nowrap;
+    }
+
+    .keterangan-colon {
+        text-align: center;
+    }
+
+    .keterangan-value {
+        min-width: 0;
+        font-weight: 700;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+
 
     /* ============================================================
        13) RINCIAN PEMBAYARAN
@@ -403,6 +434,13 @@ $jml_peserta       = max(1, (int)$data['jml_peserta']);
             padding: .6mm 0;
         }
 
+        .keterangan-full {
+            grid-template-columns: 155px 16px minmax(0, 1fr);
+            margin-top: .6mm;
+            font-size: 10.5pt;
+            line-height: 1.18;
+        }
+
         .receipt-footer {
             margin-top: 3mm;
             font-size: 9.5pt;
@@ -445,10 +483,10 @@ $jml_peserta       = max(1, (int)$data['jml_peserta']);
     <div class="brand">
         <span class="mug">MUG</span><span class="nesia">NESIA</span>
         <span class="counter">COUNTER</span>
+        
     </div>
-
     <div class="store-line">
-        AGEN PEMBAYARAN ONLINE
+        AGEN PEMBAYARAN ONLINE (PPOB) * SABLON KAOS DTF * CETAK MUG
     </div>
 
     <div class="store-line">
@@ -474,6 +512,12 @@ $jml_peserta       = max(1, (int)$data['jml_peserta']);
              KOLOM KIRI : DATA PESERTA
              ---------------------------------------------------- -->
         <table class="info-table">
+
+            <tr>
+                <td class="label">ID Transaksi</td>
+                <td class="colon">:</td>
+                <td class="value"><?= e(trim((string)($data['id_transaksi'] ?? '')) !== '' ? $data['id_transaksi'] : '-') ?></td>
+            </tr>
 
             <tr>
                 <td class="label">Tanggal</td>
@@ -554,6 +598,14 @@ $jml_peserta       = max(1, (int)$data['jml_peserta']);
         </table>
 
     </div>
+
+    <?php if ((int)($data['cetak_keterangan'] ?? 0) === 1 && trim((string)($data['keterangan'] ?? '')) !== ''): ?>
+    <div class="keterangan-full">
+        <div class="keterangan-label">Keterangan</div>
+        <div class="keterangan-colon">:</div>
+        <div class="keterangan-value"><?= e($data['keterangan']) ?></div>
+    </div>
+    <?php endif; ?>
 
 
     <!-- ========================================================

@@ -34,7 +34,7 @@ $item_count = $items->num_rows;
 // 4) Informasi toko (static/display)
 //    - Bisa dipindah ke tabel pengaturan jika perlu dinamis
 // =========================
-$toko_nama   = "MUGNESIA COUNTER PPOB & SABLON KAOS DTF & MUG";
+$toko_nama   = "MUGNESIA COUNTER PPOB & SABLON KAOS DTF & CETAK MUG";
 $toko_alamat = "Jalan Kemangsen Selatan RT.05 RW.02 No.81 WA: 0813-3260-2222";
 $toko_telp   = "081330222222"; // (Belum dipakai di tampilan)
 
