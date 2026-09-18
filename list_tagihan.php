@@ -419,9 +419,38 @@ function sortIcon($column, $currentSort, $currentDir)
         }
     }
 </style>
+<style>
+/* ===== Persistent Mugnesia Sidebar Layout ===== */
+body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
+.mug-app{min-height:100vh;display:flex;}
+.mug-sidebar{
+    width:260px;background:linear-gradient(180deg,#0f172a,#172554);color:#fff;
+    position:fixed;inset:0 auto 0 0;padding:22px 16px;overflow-y:auto;z-index:1000;
+}
+.mug-brand{padding:4px 10px 22px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:18px}
+.mug-brand-title{font-size:22px;font-weight:800;letter-spacing:.2px}
+.mug-brand-sub{font-size:12px;color:#cbd5e1;margin-top:4px}
+.mug-nav-section{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#94a3b8;padding:14px 12px 7px}
+.mug-side-link{display:flex;align-items:center;gap:11px;color:#dbeafe;text-decoration:none;padding:11px 12px;border-radius:10px;margin:3px 0;font-size:14px;font-weight:600}
+.mug-side-link i{font-size:17px;width:20px;text-align:center}
+.mug-side-link:hover,.mug-side-link.active{background:rgba(255,255,255,.12);color:#fff}
+.mug-side-link.active{box-shadow:inset 3px 0 0 #60a5fa}
+.mug-main{margin-left:260px;width:calc(100% - 260px);min-height:100vh;padding:24px 28px;}
+.mug-main > .container,.mug-main > .container-fluid{max-width:100%;}
+@media(max-width:900px){
+ .mug-sidebar{width:78px;padding:20px 10px}
+ .mug-brand-title,.mug-brand-sub,.mug-side-link span,.mug-nav-section{display:none}
+ .mug-side-link{justify-content:center}.mug-side-link i{font-size:20px}
+ .mug-main{margin-left:78px;width:calc(100% - 78px);padding:18px}
+}
+</style>
 </head>
 
 <body>
+<div class="mug-app">
+<?php require __DIR__ . '/layout/sidebar.php'; ?>
+<main class="mug-main">
+
 
 <div class="container-fluid app-wrap py-4 px-3 px-lg-4">
 
@@ -860,5 +889,8 @@ function printNota(id)
 }
 </script>
 
+
+</main>
+</div>
 </body>
 </html>

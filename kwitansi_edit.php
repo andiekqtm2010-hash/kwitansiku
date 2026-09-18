@@ -51,20 +51,48 @@ $status_now = trim($head['status_bayar'] ?? '');
 
 <!-- Bootstrap CSS untuk styling cepat -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
 <style>
   /* Sedikit styling agar input nyaman dilihat */
   .table-items textarea { min-width: 220px; }
   .table-items input { min-width: 120px; }
   .desc-td { min-width: 260px; }
+
+  /* ===== Persistent Mugnesia Sidebar Layout ===== */
+  body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
+  .mug-app{min-height:100vh;display:flex;}
+  .mug-sidebar{
+      width:260px;background:linear-gradient(180deg,#0f172a,#172554);color:#fff;
+      position:fixed;inset:0 auto 0 0;padding:22px 16px;overflow-y:auto;z-index:1000;
+  }
+  .mug-brand{padding:4px 10px 22px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:18px}
+  .mug-brand-title{font-size:22px;font-weight:800;letter-spacing:.2px}
+  .mug-brand-sub{font-size:12px;color:#cbd5e1;margin-top:4px}
+  .mug-nav-section{font-size:10px;font-weight:800;letter-spacing:1.2px;color:#94a3b8;padding:14px 12px 7px}
+  .mug-side-link{display:flex;align-items:center;gap:11px;color:#dbeafe;text-decoration:none;padding:11px 12px;border-radius:10px;margin:3px 0;font-size:14px;font-weight:600}
+  .mug-side-link i{font-size:17px;width:20px;text-align:center}
+  .mug-side-link:hover,.mug-side-link.active{background:rgba(255,255,255,.12);color:#fff}
+  .mug-side-link.active{box-shadow:inset 3px 0 0 #60a5fa}
+  .mug-main{margin-left:260px;width:calc(100% - 260px);min-height:100vh;padding:24px 28px;}
+  @media(max-width:900px){
+    .mug-sidebar{width:78px;padding:20px 10px}
+    .mug-brand-title,.mug-brand-sub,.mug-side-link span,.mug-nav-section{display:none}
+    .mug-side-link{justify-content:center}.mug-side-link i{font-size:20px}
+    .mug-main{margin-left:78px;width:calc(100% - 78px);padding:18px}
+  }
+
 </style>
 </head>
 <body class="bg-light">
-<div class="container py-4">
+<div class="mug-app">
+<?php require __DIR__ . '/layout/sidebar.php'; ?>
+<main class="mug-main">
+<div class="container-fluid py-2">
 
   <!-- Header navigasi sederhana -->
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <a href="index.php" class="btn btn-link">&larr; Kembali</a>
+    <a href="list_kwitansi.php" class="btn btn-link">&larr; Kembali ke Daftar Kwitansi</a>
     <div class="text-muted">
       No. Kwitansi: <strong><?= htmlspecialchars($head['no_kwitansi']) ?></strong>
     </div>
@@ -375,7 +403,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Re-hitung saat discount berubah
   document.getElementById('discount')?.addEventListener('input', hitung);
+
+  // Cegah update jika total transaksi Rp 0
+  document.getElementById('formKwitansi')?.addEventListener('submit', (e) => {
+    hitung();
+    const total = parseNum(document.getElementById('total')?.value || 0);
+    if (total <= 0) {
+      e.preventDefault();
+      alert('Total transaksi tidak boleh Rp 0. Silakan isi harga/nominal transaksi terlebih dahulu.');
+      document.querySelector('.harga')?.focus();
+    }
+  });
 });
 </script>
+</main>
+</div>
 </body>
 </html>

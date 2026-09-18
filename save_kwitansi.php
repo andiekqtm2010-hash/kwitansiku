@@ -49,6 +49,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Nilai akhir tidak boleh minus walaupun discount lebih besar dari bruto
     $total = max(0, $total_bruto - $discount);
 
+    // VALIDASI WAJIB: transaksi dengan total Rp 0 tidak boleh disimpan
+    if ($total <= 0) {
+        die("<script>
+            alert('Total transaksi tidak boleh Rp 0. Silakan isi harga/nominal transaksi terlebih dahulu.');
+            window.history.back();
+        </script>");
+    }
+
     // generate no kwitansi: KWT/9/2025/00001
     $bulan = date('n', strtotime($tanggal));
     $tahun = date('Y', strtotime($tanggal));

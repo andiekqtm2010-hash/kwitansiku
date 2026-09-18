@@ -70,6 +70,14 @@ $discount_hdr = max(0, min($discount_hdr, $total_bruto));
 // total_netto = total_bruto - discount (disimpan ke kolom `total`)
 $total_netto = $total_bruto - $discount_hdr;
 
+// VALIDASI WAJIB: transaksi dengan total Rp 0 tidak boleh di-update
+if ($total_netto <= 0) {
+  die("<script>
+      alert('Total transaksi tidak boleh Rp 0. Silakan isi harga/nominal transaksi terlebih dahulu.');
+      window.history.back();
+  </script>");
+}
+
 // ================== Update header kwitansi ==================
 // Catatan: no_kwitansi tidak diubah di sini
 $stmt = $conn->prepare("
