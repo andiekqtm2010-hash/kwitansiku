@@ -1,119 +1,77 @@
 <?php
-require_once "db.php";
-
-function rupiah_to_number($s) {
-    $s = str_replace(['.',',',' '], '', $s);
-    return (float)$s;
+require_once 'db.php';
+function rupiah_to_number($value): float {
+    return (float)str_replace([',', '.', ' '], '', (string)$value);
 }
+function gagal_simpan(string $pesan): void {
+    http_response_code(422);
+    echo '<!doctype html><html lang="id"><meta charset="utf-8"><title>Gagal menyimpan</title>';
+    echo '<script>alert(' . json_encode($pesan, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) . ');history.back();</script>';
+    echo '<p>' . htmlspecialchars($pesan, ENT_QUOTES, 'UTF-8') . ' <a href="kwitansi_form.php">Kembali</a></p>';
+    exit;
+}
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: kwitansi_form.php'); exit; }
+$tanggal = $_POST['tanggal'] ?? date('Y-m-d');
+$dt = DateTimeImmutable::createFromFormat('!Y-m-d', $tanggal);
+if (!$dt || $dt->format('Y-m-d') !== $tanggal) gagal_simpan('Tanggal tidak valid.');
+$nama = trim((string)($_POST['nama_pelanggan'] ?? '')) ?: 'END USER';
+$alamat = trim((string)($_POST['alamat_pelanggan'] ?? '')) ?: 'KEMANGSEN';
+$catatan = trim((string)($_POST['catatan'] ?? ''));
+$status = (string)($_POST['status_bayar'] ?? 'Lunas');
+if (!in_array($status, ['Lunas','Piutang'], true)) gagal_simpan('Status pembayaran tidak valid.');
+$discount = max(0, rupiah_to_number($_POST['discount'] ?? '0'));
+$deskripsi = $_POST['deskripsi'] ?? [];
+$qty = $_POST['qty'] ?? [];
+$harga = $_POST['harga'] ?? [];
+$hpp = $_POST['hpp'] ?? [];
+if (!is_array($deskripsi) || !is_array($qty) || !is_array($harga) || !is_array($hpp)) gagal_simpan('Data item tidak valid.');
+$items=[]; $bruto=0;
+foreach($deskripsi as $i=>$d){
+    $d=trim((string)$d);
+    if ($d==='') continue;
+    $q=(int)($qty[$i] ?? 0);
+    $h=rupiah_to_number($harga[$i] ?? '0');
+    $cost=rupiah_to_number($hpp[$i] ?? '0');
+    if($q<1 || $h<0 || $cost<0 || !is_finite($h) || !is_finite($cost)) gagal_simpan('Qty, harga jual, dan HPP harus bernilai valid dan tidak negatif.');
+    $sub=$q*$h;
+    $labaSatuan=$h-$cost;
+    $totalLaba=$q*$labaSatuan;
+    $bruto+=$sub;
+    $items[]=[$d,$q,$cost,$h,$labaSatuan,$sub,$totalLaba];
+}
+if(!$items) gagal_simpan('Item penjualan tidak boleh kosong.');
+$total=max(0,$bruto-$discount);
+if($total<=0) gagal_simpan('Total transaksi tidak boleh Rp 0. Silakan isi harga/nominal transaksi terlebih dahulu.');
+$aksi=($_POST['aksi_simpan'] ?? 'saja')==='cetak'?'cetak':'saja';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $tanggal = $_POST['tanggal'] ?? date('Y-m-d');
-    $nama = trim($_POST['nama_pelanggan'] ?? '');
-    $alamat = trim($_POST['alamat_pelanggan'] ?? '');
-    $catatan = trim($_POST['catatan'] ?? '');
-    $status_bayar = trim($_POST['status_bayar'] ?? '');
-
-    // ============================================================
-    // DISCOUNT DARI FORM KWITANSI BARU
-    // - Nilai discount dikirim dari field name="discount"
-    // - Konversi ke angka agar aman dipakai dalam perhitungan
-    // - Tidak mengizinkan discount negatif
-    // ============================================================
-    $discount = max(0, rupiah_to_number($_POST['discount'] ?? '0'));
-
-    $deskripsi = $_POST['deskripsi'] ?? [];
-    $qty = $_POST['qty'] ?? [];
-    $harga = $_POST['harga'] ?? [];
-    $subtotal = $_POST['subtotal'] ?? [];
-
-    // ============================================================
-    // HITUNG TOTAL SERVER-SIDE
-    // $total_bruto = jumlah seluruh subtotal item sebelum discount
-    // $total       = nilai akhir setelah dikurangi discount
-    // ============================================================
-    $total_bruto = 0;
-    $items = [];
-    for ($i=0; $i<count($deskripsi); $i++) {
-        $d = trim($deskripsi[$i] ?? '');
-        if ($d === '') continue;
-        $q = max(1, (int)($qty[$i] ?? 0));
-        $h = rupiah_to_number($harga[$i] ?? '0');
-        $sub = $q * $h;
-        $total_bruto += $sub;
-        $items[] = [$d, $q, $h, $sub];
-    }
-    if (empty($items)) {
-        die("Item tidak boleh kosong. <a href='kwitansi_form.php'>Kembali</a>");
-    }
-
-    // Nilai akhir tidak boleh minus walaupun discount lebih besar dari bruto
-    $total = max(0, $total_bruto - $discount);
-
-    // VALIDASI WAJIB: transaksi dengan total Rp 0 tidak boleh disimpan
-    if ($total <= 0) {
-        die("<script>
-            alert('Total transaksi tidak boleh Rp 0. Silakan isi harga/nominal transaksi terlebih dahulu.');
-            window.history.back();
-        </script>");
-    }
-
-    // generate no kwitansi: KWT/9/2025/00001
-    $bulan = date('n', strtotime($tanggal));
-    $tahun = date('Y', strtotime($tanggal));
-
-    $sql_last = "SELECT no_kwitansi FROM kwitansi
-                 WHERE no_kwitansi LIKE CONCAT('KWT/', ?, '/', ?, '/%')
-                 ORDER BY no_kwitansi DESC LIMIT 1";
-    $stmt = $conn->prepare($sql_last);
-    $stmt->bind_param("ss", $bulan, $tahun);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $last = 0;
-    if ($row = $res->fetch_assoc()) {
-        $parts = explode('/', $row['no_kwitansi']);
-        $last = (int) end($parts);
-    }
-    $stmt->close();
-    $next = $last + 1;
-    $nomor_urut = str_pad($next, 5, "0", STR_PAD_LEFT);
-    $no_kwitansi = "KWT/$bulan/$tahun/$nomor_urut";
-
-    // ============================================================
-    // INSERT HEADER KWITANSI
-    // Simpan discount dan total akhir langsung saat kwitansi dibuat
-    // ============================================================
-    $stmt = $conn->prepare(
-        "INSERT INTO kwitansi
-        (no_kwitansi, tanggal, nama_pelanggan, alamat_pelanggan, catatan, status_bayar, discount, total)
-        VALUES (?,?,?,?,?,?,?,?)"
-    );
-    $stmt->bind_param(
-        "ssssssdd",
-        $no_kwitansi,
-        $tanggal,
-        $nama,
-        $alamat,
-        $catatan,
-        $status_bayar,
-        $discount,
-        $total
-    );
-    $stmt->execute();
-    $kwitansi_id = $stmt->insert_id;
-    $stmt->close();
-
-    // insert items
-    $stmt = $conn->prepare("INSERT INTO kwitansi_item (kwitansi_id, deskripsi, qty, harga, subtotal) VALUES (?,?,?,?,?)");
-    foreach ($items as $it) {
-        [$d,$q,$h,$s] = $it;
-        $stmt->bind_param("isidd", $kwitansi_id, $d, $q, $h, $s);
+try {
+    $conn->begin_transaction();
+    $bulan=(int)$dt->format('n'); $tahun=(int)$dt->format('Y');
+    // Kunci baris header selama transaksi untuk meminimalkan benturan nomor.
+    $stmt=$conn->prepare("SELECT no_kwitansi FROM kwitansi WHERE no_kwitansi LIKE CONCAT('KWT/', ?, '/', ?, '/%') ORDER BY no_kwitansi DESC LIMIT 1 FOR UPDATE");
+    $stmt->bind_param('ss',$bulan,$tahun);$stmt->execute();
+    $lastRow=$stmt->get_result()->fetch_assoc();$stmt->close();
+    $last=0;
+    if($lastRow){$parts=explode('/',$lastRow['no_kwitansi']);$last=(int)end($parts);}
+    $nomor='KWT/'.$bulan.'/'.$tahun.'/'.str_pad((string)($last+1),5,'0',STR_PAD_LEFT);
+    $stmt=$conn->prepare('INSERT INTO kwitansi (no_kwitansi,tanggal,nama_pelanggan,alamat_pelanggan,catatan,status_bayar,discount,total) VALUES (?,?,?,?,?,?,?,?)');
+    $stmt->bind_param('ssssssdd',$nomor,$tanggal,$nama,$alamat,$catatan,$status,$discount,$total);
+    $stmt->execute();$id=$stmt->insert_id;$stmt->close();
+    $stmt=$conn->prepare('INSERT INTO kwitansi_item (kwitansi_id,deskripsi,qty,hpp,harga,laba_satuan,subtotal,total_laba) VALUES (?,?,?,?,?,?,?,?)');
+    foreach($items as $it){
+        [$d,$q,$cost,$h,$labaSatuan,$sub,$totalLaba]=$it;
+        $stmt->bind_param('isiddddd',$id,$d,$q,$cost,$h,$labaSatuan,$sub,$totalLaba);
         $stmt->execute();
     }
-    $stmt->close();
-
-    header("Location: kwitansi_print.php?id=" . $kwitansi_id);
-    exit;
-} else {
-    header("Location: kwitansi_form.php");
-    exit;
+    $stmt->close();$conn->commit();
+} catch(Throwable $e) {
+    $conn->rollback();
+    error_log('Gagal menyimpan kwitansi: '.$e->getMessage());
+    gagal_simpan('Gagal menyimpan transaksi. Pastikan kolom HPP dan laba sudah ditambahkan melalui SQL upgrade.');
 }
+if($aksi==='cetak'){
+    header('Location: kwitansi_print.php?id='.$id);
+} else {
+    header('Location: kwitansi_form.php?saved=1&no='.rawurlencode($nomor));
+}
+exit;

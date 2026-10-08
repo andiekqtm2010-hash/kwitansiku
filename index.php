@@ -8,15 +8,70 @@ function scalarValue($conn, $sql, $default = 0) {
     return $row ? ($row[0] ?? $default) : $default;
 }
 
-$today = date('Y-m-d');
-$monthStart = date('Y-m-01');
-$monthEnd = date('Y-m-t');
+// Tanggal filter dashboard (default hari ini). Format harus YYYY-MM-DD.
+$selectedDate = $_GET['tanggal'] ?? date('Y-m-d');
+$parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $selectedDate);
+if (!$parsedDate || $parsedDate->format('Y-m-d') !== $selectedDate) {
+    $selectedDate = date('Y-m-d');
+    $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $selectedDate);
+}
+$filterDate = $conn->real_escape_string($selectedDate);
+$monthStart = $conn->real_escape_string($parsedDate->format('Y-m-01'));
+$monthEnd = $conn->real_escape_string($parsedDate->format('Y-m-t'));
+$labelTanggal = $parsedDate->format('d/m/Y');
 
-$transaksi_hari_ini = (int) scalarValue($conn, "SELECT COUNT(*) FROM kwitansi WHERE tanggal = '".$conn->real_escape_string($today)."'");
-$pemasukan_hari_ini = (float) scalarValue($conn, "SELECT COALESCE(SUM(total),0) FROM kwitansi WHERE tanggal = '".$conn->real_escape_string($today)."' AND LOWER(status_bayar)='lunas'");
-$piutang = (float) scalarValue($conn, "SELECT COALESCE(SUM(total),0) FROM kwitansi WHERE LOWER(status_bayar)='piutang'");
-$transaksi_bulan_ini = (int) scalarValue($conn, "SELECT COUNT(*) FROM kwitansi WHERE tanggal BETWEEN '".$conn->real_escape_string($monthStart)."' AND '".$conn->real_escape_string($monthEnd)."'");
-$pemasukan_bulan_ini = (float) scalarValue($conn, "SELECT COALESCE(SUM(total),0) FROM kwitansi WHERE tanggal BETWEEN '".$conn->real_escape_string($monthStart)."' AND '".$conn->real_escape_string($monthEnd)."' AND LOWER(status_bayar)='lunas'");
+$transaksi_hari_ini = (int) scalarValue($conn, "SELECT COUNT(*) FROM kwitansi WHERE tanggal = '$filterDate'");
+$pemasukan_hari_ini = (float) scalarValue($conn, "SELECT COALESCE(SUM(total),0) FROM kwitansi WHERE tanggal = '$filterDate' AND LOWER(TRIM(status_bayar))='lunas'");
+// Piutang adalah saldo piutang saat ini, bukan riwayat saldo pada tanggal lampau.
+$piutang = (float) scalarValue($conn, "SELECT COALESCE(SUM(total),0) FROM kwitansi WHERE LOWER(TRIM(status_bayar))='piutang'");
+$transaksi_bulan_ini = (int) scalarValue($conn, "SELECT COUNT(*) FROM kwitansi WHERE tanggal BETWEEN '$monthStart' AND '$monthEnd'");
+$pemasukan_bulan_ini = (float) scalarValue($conn, "SELECT COALESCE(SUM(total),0) FROM kwitansi WHERE tanggal BETWEEN '$monthStart' AND '$monthEnd' AND LOWER(TRIM(status_bayar))='lunas'");
+
+// Nominal seluruh kwitansi pada tanggal terpilih, baik lunas maupun piutang.
+$total_transaksi_hari_ini = (float) scalarValue($conn, "SELECT COALESCE(SUM(total),0) FROM kwitansi WHERE tanggal = '$filterDate'");
+$piutang_hari_ini = (float) scalarValue($conn, "SELECT COALESCE(SUM(total),0) FROM kwitansi WHERE tanggal = '$filterDate' AND LOWER(TRIM(status_bayar))='piutang'");
+$piutang_bulan_ini = (float) scalarValue($conn, "SELECT COALESCE(SUM(total),0) FROM kwitansi WHERE tanggal BETWEEN '$monthStart' AND '$monthEnd' AND LOWER(TRIM(status_bayar))='piutang'");
+
+// Margin untuk kwitansi dengan bukti pencatatan HPP/laba. HPP nol sah untuk jasa tanpa modal.
+// Data historis dengan HPP dan total_laba sama-sama nol tetap dikecualikan.
+$margin_tersedia = false;
+$total_margin = 0.0;
+$jumlah_margin = 0;
+$total_margin_bulan = 0.0;
+$jumlah_margin_bulan = 0;
+$kolom_hpp = $conn->query("SHOW COLUMNS FROM kwitansi_item LIKE 'hpp'");
+if ($kolom_hpp && $kolom_hpp->num_rows > 0) {
+    $margin_tersedia = true;
+    $margin_sql = "SELECT COALESCE(SUM(k.total - i.total_hpp),0) AS margin_total, COUNT(*) AS jumlah
+        FROM kwitansi k
+        JOIN (SELECT kwitansi_id, SUM(qty * hpp) AS total_hpp,
+                     COUNT(*) AS n, SUM(CASE WHEN hpp > 0 OR COALESCE(total_laba, 0) <> 0 THEN 1 ELSE 0 END) AS n_hpp
+              FROM kwitansi_item GROUP BY kwitansi_id) i ON i.kwitansi_id = k.id
+        WHERE k.tanggal = '$filterDate' AND i.n = i.n_hpp AND i.n > 0";
+    $margin_result = $conn->query($margin_sql);
+    if ($margin_result) {
+        $margin_row = $margin_result->fetch_assoc();
+        $total_margin = (float) ($margin_row['margin_total'] ?? 0);
+        $jumlah_margin = (int) ($margin_row['jumlah'] ?? 0);
+        // Perhitungan margin bulan menggunakan aturan HPP lengkap yang sama.
+        $margin_month_sql = "SELECT COALESCE(SUM(k.total - i.total_hpp),0) AS margin_total, COUNT(*) AS jumlah
+            FROM kwitansi k
+            JOIN (SELECT kwitansi_id, SUM(qty * hpp) AS total_hpp,
+                         COUNT(*) AS n, SUM(CASE WHEN hpp > 0 OR COALESCE(total_laba, 0) <> 0 THEN 1 ELSE 0 END) AS n_hpp
+                  FROM kwitansi_item GROUP BY kwitansi_id) i ON i.kwitansi_id = k.id
+            WHERE k.tanggal BETWEEN '$monthStart' AND '$monthEnd' AND i.n = i.n_hpp AND i.n > 0";
+        $margin_month_result = $conn->query($margin_month_sql);
+        if ($margin_month_result) {
+            $margin_month_row = $margin_month_result->fetch_assoc();
+            $total_margin_bulan = (float) ($margin_month_row['margin_total'] ?? 0);
+            $jumlah_margin_bulan = (int) ($margin_month_row['jumlah'] ?? 0);
+        } else {
+            $margin_tersedia = false;
+        }
+    } else {
+        $margin_tersedia = false;
+    }
+}
 
 $recent = $conn->query("SELECT id,no_kwitansi,tanggal,nama_pelanggan,status_bayar,total,catatan FROM kwitansi ORDER BY id DESC LIMIT 8");
 ?>
@@ -69,16 +124,25 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
 <div class="mug-app">
 <?php require __DIR__ . "/layout/sidebar.php"; ?>
 <main class="mug-main">
-  <div class="topbar"><div><div class="title">Dashboard Mugnesia</div><div class="subtitle">Ringkasan transaksi dan akses cepat layanan Mugnesia Counter.</div></div><div class="date-pill"><i class="bi bi-calendar3 me-2"></i><?= date('d/m/Y') ?></div></div>
+  <div class="topbar"><div><div class="title">Dashboard Mugnesia</div><div class="subtitle">Ringkasan transaksi dan akses cepat layanan Mugnesia Counter.</div></div><form method="get" class="date-pill d-flex align-items-center gap-2"><label for="tanggalDashboard" class="mb-0"><i class="bi bi-calendar3"></i> Tanggal</label><input id="tanggalDashboard" aria-label="Tanggal dashboard" type="date" name="tanggal" value="<?= htmlspecialchars($selectedDate, ENT_QUOTES, 'UTF-8') ?>" class="form-control form-control-sm" style="width:155px" onchange="this.form.submit()"><button type="submit" class="btn btn-sm btn-primary">Tampilkan</button></form></div>
   <div class="row g-3 mb-4">
-    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Transaksi Hari Ini</div><div class="stat-value"><?= number_format($transaksi_hari_ini,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-receipt"></i></div></div><div class="stat-note">Kwitansi tercatat hari ini</div></div></div>
-    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Pemasukan Hari Ini</div><div class="stat-value">Rp <?= number_format($pemasukan_hari_ini,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-cash-stack"></i></div></div><div class="stat-note">Transaksi berstatus lunas</div></div></div>
-    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Total Piutang</div><div class="stat-value">Rp <?= number_format($piutang,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-hourglass-split"></i></div></div><div class="stat-note">Kwitansi berstatus piutang</div></div></div>
-    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Transaksi Bulan Ini</div><div class="stat-value"><?= number_format($transaksi_bulan_ini,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-calendar2-check"></i></div></div><div class="stat-note">Pemasukan Rp <?= number_format($pemasukan_bulan_ini,0,',','.') ?></div></div></div>
+    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Transaksi Tanggal Dipilih</div><div class="stat-value"><?= number_format($transaksi_hari_ini,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-receipt"></i></div></div><div class="stat-note">Kwitansi tanggal <?= htmlspecialchars($labelTanggal) ?></div></div></div>
+    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Pemasukan Tanggal Dipilih</div><div class="stat-value">Rp <?= number_format($pemasukan_hari_ini,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-cash-stack"></i></div></div><div class="stat-note">Transaksi berstatus lunas</div></div></div>
+    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Total Piutang</div><div class="stat-value">Rp <?= number_format($piutang,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-hourglass-split"></i></div></div><div class="stat-note">Saldo piutang saat ini (semua tanggal)</div></div></div>
+    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Transaksi Bulan Dipilih</div><div class="stat-value"><?= number_format($transaksi_bulan_ini,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-calendar2-check"></i></div></div><div class="stat-note">Pemasukan Rp <?= number_format($pemasukan_bulan_ini,0,',','.') ?></div></div></div>
+    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Total Transaksi Hari Ini</div><div class="stat-value">Rp <?= number_format($total_transaksi_hari_ini,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-wallet2"></i></div></div><div class="stat-note">Seluruh kwitansi tanggal <?= htmlspecialchars($labelTanggal) ?>, lunas + piutang</div></div></div>
+    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Total Piutang Hari Ini</div><div class="stat-value">Rp <?= number_format($piutang_hari_ini,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-calendar-day"></i></div></div><div class="stat-note">Kwitansi tanggal terpilih yang masih berstatus piutang</div></div></div>
+    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Total Piutang Bulan Ini</div><div class="stat-value">Rp <?= number_format($piutang_bulan_ini,0,',','.') ?></div></div><div class="stat-icon"><i class="bi bi-calendar-month"></i></div></div><div class="stat-note">Piutang pada bulan <?= htmlspecialchars($parsedDate->format('m/Y')) ?></div></div></div>
+    <div class="col-xl-3 col-md-6"><div class="stat"><div class="d-flex justify-content-between"><div><div class="stat-label">Total Margin Hari Ini</div><div class="stat-value"><?= $margin_tersedia ? 'Rp '.number_format($total_margin,0,',','.') : 'Belum tersedia' ?></div></div><div class="stat-icon"><i class="bi bi-graph-up-arrow"></i></div></div><div class="stat-note"><?= $margin_tersedia ? number_format($jumlah_margin,0,',','.').' kwitansi dengan data HPP/laba; setelah diskon' : 'Data HPP tidak tersedia' ?></div></div></div>
   </div>
-  <div class="cardx mb-4"><div class="cardx-head"><div><div class="cardx-title">Akses Cepat</div><div class="subtitle">Pilih transaksi yang ingin dikerjakan.</div></div></div><div class="p-3 quick">
+  <div class="row g-3 mb-3 align-items-stretch">
+    <div class="col-xl-3 col-md-6"><div class="stat h-100"><div class="d-flex justify-content-between"><div><div class="stat-label">Total Margin Bulan Ini</div><div class="stat-value"><?= $margin_tersedia ? 'Rp '.number_format($total_margin_bulan,0,',','.') : 'Belum tersedia' ?></div></div><div class="stat-icon"><i class="bi bi-bar-chart-line"></i></div></div><div class="stat-note"><?= $margin_tersedia ? number_format($jumlah_margin_bulan,0,',','.').' kwitansi dengan data HPP/laba; setelah diskon' : 'Data HPP tidak tersedia' ?></div></div></div>
+    <div class="col-xl-9 col-md-6">
+      <div class="cardx h-100"><div class="cardx-head"><div><div class="cardx-title">Akses Cepat</div><div class="subtitle">Pilih transaksi yang ingin dikerjakan.</div></div></div><div class="p-3 quick">
     <a href="kwitansi_form.php"><i class="bi bi-plus-circle"></i>Buat Kwitansi</a><a href="input_tagihan.php"><i class="bi bi-lightning-charge"></i>Input PLN</a><a href="input_bpjs.php"><i class="bi bi-heart-pulse"></i>Input BPJS</a><a href="laporan_penjualan.php"><i class="bi bi-graph-up-arrow"></i>Laporan Penjualan</a>
-  </div></div>
+      </div></div>
+    </div>
+  </div>
   <div class="cardx"><div class="cardx-head"><div><div class="cardx-title">Transaksi Terbaru</div><div class="subtitle">8 kwitansi terakhir yang tersimpan.</div></div><a href="list_kwitansi.php" class="btn btn-sm btn-outline-primary">Lihat Semua</a></div><div class="table-responsive"><table class="table"><thead><tr><th>No Kwitansi</th><th>Tanggal</th><th>Pelanggan</th><th>Catatan</th><th>Status</th><th class="text-end">Total</th></tr></thead><tbody>
   <?php if ($recent && $recent->num_rows): while($r=$recent->fetch_assoc()): $st=strtolower(trim($r['status_bayar']??'')); ?>
   <tr><td><a href="kwitansi_edit.php?id=<?= (int)$r['id'] ?>" class="text-decoration-none fw-bold"><?= htmlspecialchars($r['no_kwitansi']) ?></a></td><td class="text-nowrap"><?= date('d/m/Y',strtotime($r['tanggal'])) ?></td><td class="fw-semibold"><?= htmlspecialchars($r['nama_pelanggan']) ?></td><td class="text-muted"><?= htmlspecialchars(mb_strimwidth($r['catatan']??'',0,55,'…')) ?></td><td><span class="status <?= $st==='lunas'?'badge-lunas':($st==='piutang'?'badge-piutang':'bg-light') ?>"><?= htmlspecialchars($r['status_bayar'] ?: '-') ?></span></td><td class="text-end fw-bold text-nowrap">Rp <?= number_format($r['total'],0,',','.') ?></td></tr>
