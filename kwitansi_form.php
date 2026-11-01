@@ -148,7 +148,7 @@ function addRow(desc='',qty=1,harga=0,hpp=0){
     <td><input name="qty[]" type="number" min="1" step="1" class="form-control text-end qty" required></td>
     <td><input name="hpp[]" type="number" min="0" step="1" class="form-control text-end hpp" required></td>
     <td><input name="harga[]" type="number" min="0" step="1" class="form-control text-end harga" required></td>
-    <td><input class="form-control text-end readonly-value laba-satuan" readonly></td>
+    <td><input type="number" min="0" step="1" class="form-control text-end laba-satuan" aria-label="Laba per unit"></td>
     <td><input class="form-control text-end readonly-value subtotal" readonly></td>
     <td><input class="form-control text-end readonly-value total-laba" readonly></td>
     <td><button type="button" class="btn btn-sm btn-outline-danger" tabindex="-1">Hapus</button></td>`;
@@ -156,7 +156,25 @@ function addRow(desc='',qty=1,harga=0,hpp=0){
   tr.querySelector('.qty').value=qty;
   tr.querySelector('.harga').value=harga;
   tr.querySelector('.hpp').value=hpp;
-  tr.querySelectorAll('.qty,.harga,.hpp').forEach(el=>el.addEventListener('input',hitung));
+  // Harga jual dan laba per unit dapat menjadi input; nilai terakhir yang diubah menjadi acuan.
+  tr.dataset.lastEdited='harga';
+  tr.querySelector('.harga').addEventListener('input',()=>{tr.dataset.lastEdited='harga';hitung();});
+  tr.querySelector('.laba-satuan').addEventListener('input',()=>{
+    tr.dataset.lastEdited='laba';
+    const hpp=Number(tr.querySelector('.hpp').value)||0;
+    const laba=Number(tr.querySelector('.laba-satuan').value)||0;
+    tr.querySelector('.harga').value=hpp+laba;
+    hitung();
+  });
+  tr.querySelector('.hpp').addEventListener('input',()=>{
+    if(tr.dataset.lastEdited==='laba'){
+      const hpp=Number(tr.querySelector('.hpp').value)||0;
+      const laba=Number(tr.querySelector('.laba-satuan').value)||0;
+      tr.querySelector('.harga').value=hpp+laba;
+    }
+    hitung();
+  });
+  tr.querySelector('.qty').addEventListener('input',hitung);
   tr.querySelector('button').addEventListener('click',()=>{tr.remove();hitung();});
   document.getElementById('itemsBody').appendChild(tr);
   hitung();
@@ -169,7 +187,7 @@ function hitung(){
     const hpp=Number(tr.querySelector('.hpp').value)||0;
     const laba=harga-hpp, subtotal=qty*harga, totalLaba=qty*laba;
     for(const [selector,value] of [['.laba-satuan',laba],['.subtotal',subtotal],['.total-laba',totalLaba]]){
-      const el=tr.querySelector(selector);el.value=rupiah(value);
+      const el=tr.querySelector(selector);el.value=selector==='.laba-satuan'?String(value):rupiah(value);
       el.classList.toggle('profit-negative',value<0 && selector!=='.subtotal');
       el.classList.toggle('profit-positive',value>0 && selector!=='.subtotal');
     }
@@ -206,12 +224,12 @@ document.addEventListener('DOMContentLoaded',()=>{
     namaPelanggan.select();
   }
 
-  // Pada baris item terakhir, Tab setelah Harga Jual langsung ke Simpan Saja.
+  // Pada baris item terakhir, Tab setelah Laba/Unit langsung ke Simpan Saja.
   // Baris tambahan tetap bisa diisi berurutan bila tombol Tambah Baris digunakan.
   form.addEventListener('keydown',(event)=>{
     if(event.key!=='Tab' || event.shiftKey) return;
-    const lastPrice=form.querySelector('#itemsBody tr:last-child .harga');
-    if(event.target===lastPrice){
+    const lastProfit=form.querySelector('#itemsBody tr:last-child .laba-satuan');
+    if(event.target===lastProfit){
       event.preventDefault();
       document.getElementById('btnSimpan').focus();
     }

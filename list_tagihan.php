@@ -5,7 +5,7 @@
 // - Menampilkan daftar transaksi PLN Pascabayar
 // - Tampilan modern seperti index.php
 // - Search, sorting, paging server-side
-// - Aksi: View Tagihan dan Print Nota
+// - Aksi: Edit Tagihan dan Print Nota
 // ============================================================
 
 require_once "db.php";
@@ -483,6 +483,10 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
     </div>
 
 
+    <?php if (isset($_GET['updated'])): ?>
+        <div class="alert alert-success" role="status">Tagihan berhasil diperbarui.</div>
+    <?php endif; ?>
+
     <!-- ========================================================
          21) SEARCH + PAGE SIZE
          ======================================================== -->
@@ -692,14 +696,13 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
 
                                 <div class="d-inline-flex gap-1">
 
-                                    <!-- VIEW TAGIHAN -->
+                                    <!-- EDIT TAGIHAN -->
                                     <a
                                         class="btn btn-outline-secondary btn-sm action-btn"
-                                        href="nota_tagihan.php?id=<?= (int)$row['id'] ?>"
-                                        target="_blank"
-                                        title="View Tagihan">
+                                        href="input_tagihan.php?id=<?= (int)$row['id'] ?>"
+                                        title="Edit Tagihan">
 
-                                        <i class="bi bi-eye"></i>
+                                        <i class="bi bi-pencil-square"></i>
 
                                     </a>
 

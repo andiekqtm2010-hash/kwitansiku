@@ -171,11 +171,18 @@ $deskripsi =
 // 7) NILAI ITEM KWITANSI
 // qty      = 1
 // harga    = total_bayar BPJS
-// subtotal = total_bayar BPJS
+// hpp      = rp_tagihan + 1150
+// laba_satuan = harga - hpp
+// total_laba  = qty * laba_satuan
+// subtotal = qty * harga
 // ============================================================
 $qty = 1;
 $harga = $total;
-$subtotal = $total;
+// Penyesuaian HPP sesuai biaya dan komisi BPJS.
+$hpp = (float)$row['rp_tagihan'] + 1150;
+$subtotal = $qty * $harga;
+$laba_satuan = $harga - $hpp;
+$total_laba = $qty * $laba_satuan;
 
 
 // ============================================================
@@ -244,10 +251,13 @@ try {
             kwitansi_id,
             deskripsi,
             qty,
+            hpp,
             harga,
-            subtotal
+            laba_satuan,
+            subtotal,
+            total_laba
         )
-        VALUES (?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?)
     ");
 
     if (!$stmt) {
@@ -257,12 +267,15 @@ try {
     }
 
     $stmt->bind_param(
-        "isidd",
+        "isiddddd",
         $kwitansi_id,
         $deskripsi,
         $qty,
+        $hpp,
         $harga,
-        $subtotal
+        $laba_satuan,
+        $subtotal,
+        $total_laba
     );
 
     if (!$stmt->execute()) {

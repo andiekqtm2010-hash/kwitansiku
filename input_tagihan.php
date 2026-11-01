@@ -7,7 +7,8 @@
 // - Format ID: INV/KCM/YYYY/MM/0001
 // - Nomor urut kembali ke 0001 setiap berganti bulan
 // - Semua field teks disimpan dalam HURUF BESAR
-// - Setelah simpan, redirect ke nota_tagihan.php
+// - Mendukung input baru dan edit berdasarkan ID data
+// - Setelah edit, kembali ke list_tagihan.php
 // ============================================================
 
 include 'db.php';
@@ -76,6 +77,46 @@ function generate_id_transaksi($conn, $tanggal)
     return $prefix . $nomor_urut;
 }
 
+// Mode edit memakai primary key, bukan nomor transaksi dari browser.
+$is_post = $_SERVER['REQUEST_METHOD'] === 'POST';
+$id_raw = $is_post ? ($_POST['id'] ?? '') : ($_GET['id'] ?? '');
+$edit_id = 0;
+$tagihan = [];
+if ($id_raw !== '') {
+    $edit_id = filter_var($id_raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($edit_id === false) {
+        http_response_code(400);
+        die('ID tagihan tidak valid.');
+    }
+    if ($is_post && isset($_GET['id']) && (string)$_GET['id'] !== (string)$edit_id) {
+        http_response_code(400);
+        die('ID tagihan tidak sesuai.');
+    }
+    $load = $conn->prepare('SELECT * FROM tb_tagihan_listrik WHERE id = ? LIMIT 1');
+    if (!$load) {
+        die('Gagal memuat tagihan.');
+    }
+    $load->bind_param('i', $edit_id);
+    $load->execute();
+    $tagihan = $load->get_result()->fetch_assoc();
+    $load->close();
+    if (!$tagihan) {
+        http_response_code(404);
+        die('Tagihan tidak ditemukan.');
+    }
+}
+if ($is_post && isset($_GET['id']) && !$edit_id) {
+    http_response_code(400);
+    die('ID tagihan wajib diisi untuk edit.');
+}
+$is_edit = $edit_id > 0;
+
+function form_value($field, $default = '')
+{
+    global $tagihan;
+    return htmlspecialchars((string)($tagihan[$field] ?? $default), ENT_QUOTES, 'UTF-8');
+}
+
 // ============================================================
 // 3) PROSES SIMPAN
 // ============================================================
@@ -86,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // --------------------------------------------------------
     $tgl_bayar = $_POST['tgl_bayar'] ?? '';
 
-    if ($tgl_bayar === '') {
+    if ($tgl_bayar === '' || strtotime($tgl_bayar) === false) {
         die("Tanggal bayar wajib diisi.");
     }
 
@@ -94,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 3b) Generate ID transaksi di SERVER.
     // Jadi walaupun field form dimanipulasi, nomor tetap aman.
     // --------------------------------------------------------
-    $id_transaksi = generate_id_transaksi($conn, $tgl_bayar);
+    $id_transaksi = $is_edit ? $tagihan['id_transaksi'] : generate_id_transaksi($conn, $tgl_bayar);
 
     // --------------------------------------------------------
     // 3c) Semua field string diseragamkan menjadi HURUF BESAR.
@@ -129,34 +170,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // --------------------------------------------------------
     // 3g) Simpan data dengan prepared statement.
     // --------------------------------------------------------
-    $stmt = $conn->prepare("INSERT INTO tb_tagihan_listrik
+    if ($is_edit) {
+        $stmt = $conn->prepare("UPDATE tb_tagihan_listrik SET
+            tgl_bayar=?, id_transaksi=?, no_pelanggan=?, nama=?, tarif_daya=?,
+            stand_awal=?, stand_akhir=?, reff1=?, reff2=?, periode=?,
+            rp_tagihan=?, denda=?, lain_lain=?, admin_bank=?, total_bayar=?
+            WHERE id=?");
+    } else {
+        $stmt = $conn->prepare("INSERT INTO tb_tagihan_listrik
             (tgl_bayar,id_transaksi,no_pelanggan,nama,tarif_daya,
             stand_awal,stand_akhir,reff1,reff2,periode,
             rp_tagihan,denda,lain_lain,admin_bank,total_bayar)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-
-    if (!$stmt) {
-        die("Gagal menyiapkan query simpan: " . $conn->error);
     }
 
-    $stmt->bind_param(
-        "sssssiisssiiiii",
-        $tgl_bayar_dt,
-        $id_transaksi,
-        $no_pelanggan,
-        $nama,
-        $tarif_daya,
-        $stand_awal,
-        $stand_akhir,
-        $reff1,
-        $reff2,
-        $periode,
-        $rp_tagihan,
-        $denda,
-        $lain_lain,
-        $admin_bank,
-        $total_bayar
-    );
+    if (!$stmt) {
+        die("Gagal menyiapkan query simpan: " . htmlspecialchars($conn->error));
+    }
+
+    $values = [
+        $tgl_bayar_dt, $id_transaksi, $no_pelanggan, $nama, $tarif_daya,
+        $stand_awal, $stand_akhir, $reff1, $reff2, $periode,
+        $rp_tagihan, $denda, $lain_lain, $admin_bank, $total_bayar
+    ];
+    $types = "sssssiisssiiiii";
+    if ($is_edit) {
+        $values[] = $edit_id;
+        $types .= "i";
+    }
+    $stmt->bind_param($types, ...$values);
 
     // --------------------------------------------------------
     // 3h) Jika berhasil, kembali ke form input dalam kondisi default.
@@ -166,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Redirect kembali ke form agar semua textbox kembali ke kondisi awal.
         // Pola ini juga mencegah INSERT terulang jika browser di-refresh.
-        header("Location: input_tagihan.php?saved=1");
+        header($is_edit ? "Location: list_tagihan.php?updated=1" : "Location: input_tagihan.php?saved=1");
         exit;
     } else {
         $error = $stmt->error;
@@ -179,15 +221,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ============================================================
 // 4) DEFAULT VALUE SAAT FORM DIBUKA
 // ============================================================
-$default_datetime     = date('Y-m-d\\TH:i');
-$default_id_transaksi = generate_id_transaksi($conn, $default_datetime);
+$default_datetime = $is_edit ? date('Y-m-d\\TH:i:s', strtotime($tagihan['tgl_bayar'])) : date('Y-m-d\\TH:i');
+$default_id_transaksi = $is_edit ? $tagihan['id_transaksi'] : generate_id_transaksi($conn, $default_datetime);
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Input Tagihan PLN</title>
+<title><?= $is_edit ? 'Edit' : 'Input' ?> Tagihan PLN</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -331,17 +373,21 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
         <a href="list_tagihan.php" class="btn btn-success">📄 List Tagihan</a>
     </div>
 
-    <h2>Input Tagihan Listrik PLN</h2>
+    <h2><?= $is_edit ? 'Edit' : 'Input' ?> Tagihan Listrik PLN</h2>
+    <?php if (!$is_edit && isset($_GET['saved'])): ?>
+        <div class="alert alert-success" role="status">Tagihan berhasil disimpan.</div>
+    <?php endif; ?>
 
     <!-- ========================================================
          12) FORM INPUT TAGIHAN
          ======================================================== -->
-    <form method="post" id="formTagihan">
+    <form method="post" action="input_tagihan.php<?= $is_edit ? '?id=' . $edit_id : '' ?>" id="formTagihan">
+        <input type="hidden" name="id" value="<?= $is_edit ? $edit_id : '' ?>">
 
         <div class="form-group">
             <label>Tanggal Bayar</label>
             <input
-                type="datetime-local"
+                type="datetime-local" step="1"
                 name="tgl_bayar"
                 value="<?= htmlspecialchars($default_datetime) ?>"
                 required>
@@ -361,67 +407,67 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
 
         <div class="form-group">
             <label>No Pelanggan</label>
-            <input type="text" name="no_pelanggan" class="uppercase-input" required>
+            <input type="text" name="no_pelanggan" class="uppercase-input" required value="<?= form_value('no_pelanggan') ?>">
         </div>
 
         <div class="form-group">
             <label>Nama</label>
-            <input type="text" name="nama" class="uppercase-input" required>
+            <input type="text" name="nama" class="uppercase-input" required value="<?= form_value('nama') ?>">
         </div>
 
         <div class="form-group">
             <label>Tarif / Daya</label>
-            <input type="text" placeholder="MIS: R1M/900 VA" name="tarif_daya" class="uppercase-input" required>
+            <input type="text" placeholder="MIS: R1M/900 VA" name="tarif_daya" class="uppercase-input" required value="<?= form_value('tarif_daya') ?>">
         </div>
 
         <div class="form-group">
             <label>Stand Meter Awal</label>
-            <input type="number" name="stand_awal" required>
+            <input type="number" name="stand_awal" required value="<?= form_value('stand_awal') ?>">
         </div>
 
         <div class="form-group">
             <label>Stand Meter Akhir</label>
-            <input type="number" name="stand_akhir" required>
+            <input type="number" name="stand_akhir" required value="<?= form_value('stand_akhir') ?>">
         </div>
 
         <div class="form-group">
             <label>Reff 1</label>
-            <input type="text" name="reff1" class="uppercase-input">
+            <input type="text" name="reff1" class="uppercase-input" value="<?= form_value('reff1') ?>">
         </div>
 
         <div class="form-group">
             <label>Reff 2</label>
-            <input type="text" name="reff2" class="uppercase-input">
+            <input type="text" name="reff2" class="uppercase-input" value="<?= form_value('reff2') ?>">
         </div>
 
         <div class="form-group">
             <label>Periode</label>
-            <input type="text" placeholder="MIS: SEP26" name="periode" class="uppercase-input">
+            <input type="text" placeholder="MIS: SEP26" name="periode" class="uppercase-input" value="<?= form_value('periode') ?>">
         </div>
 
         <div class="form-group">
             <label>Rp Tagihan</label>
-            <input type="number" placeholder="tanpa titik, mis: 275132" name="rp_tagihan" required>
+            <input type="number" placeholder="tanpa titik, mis: 275132" name="rp_tagihan" required value="<?= form_value('rp_tagihan') ?>">
         </div>
 
         <div class="form-group">
             <label>Denda</label>
-            <input type="number" name="denda" value="0" required>
+            <input type="number" name="denda" required value="<?= form_value('denda', 0) ?>">
         </div>
 
         <div class="form-group">
             <label>Lain-lain</label>
-            <input type="number" name="lain_lain" value="0" required>
+            <input type="number" name="lain_lain" required value="<?= form_value('lain_lain', 0) ?>">
         </div>
 
         <div class="form-group">
             <label>Admin Bank</label>
-            <input type="number" name="admin_bank" required>
+            <input type="number" name="admin_bank" required value="<?= form_value('admin_bank') ?>">
         </div>
 
         <div class="text-end mt-3">
             <button type="submit" class="btn btn-secondary">
-                Simpan
+                <?= $is_edit ? 'Simpan Perubahan' : 'Simpan' ?>
             </button>
         </div>
     </form>

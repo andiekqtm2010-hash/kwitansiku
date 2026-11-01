@@ -26,7 +26,8 @@
         'nama_pelanggan' => 'nama_pelanggan',
         'status_bayar'   => 'status_bayar',
         'discount'       => 'discount',
-        'total'          => 'total'
+        'total'          => 'total',
+        'catatan'        => 'catatan'
     ];
 
     $sort = $_GET['sort'] ?? 'id';
@@ -46,9 +47,9 @@
     // 4) Filter pencarian + grand total
     // ================================
     if ($search !== "") {
-        $sql .= "WHERE no_kwitansi LIKE ? OR nama_pelanggan LIKE ? OR status_bayar LIKE ? ";
-        $params = ["%$search%", "%$search%", "%$search%"];
-        $types = "sss";
+        $sql .= "WHERE no_kwitansi LIKE ? OR nama_pelanggan LIKE ? OR status_bayar LIKE ? OR catatan LIKE ? ";
+        $params = ["%$search%", "%$search%", "%$search%", "%$search%"];
+        $types = "ssss";
 
         $sql_sum = preg_replace('/SELECT \* FROM/', 'SELECT COALESCE(SUM(total),0) as gtotal FROM', $sql, 1);
         $stmt_sum = $conn->prepare($sql_sum);
@@ -377,12 +378,13 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
         <div class="input-group search-box">
           <span class="input-group-text"><i class="bi bi-search"></i></span>
           <input type="text" class="form-control"
-                 placeholder="Cari no kwitansi, nama pelanggan, atau status bayar..."
+                 placeholder="Cari no kwitansi, nama pelanggan, status bayar, atau catatan..."
+                 id="search-kwitansi" autocomplete="off"
                  name="q"
                  value="<?= htmlspecialchars($search) ?>">
           <button class="btn btn-primary px-4" type="submit">Cari</button>
           <?php if ($search !== ''): ?>
-            <a class="btn btn-outline-secondary" href="?ps=<?= $limit ?>&sort=<?= urlencode($sort) ?>&dir=<?= urlencode(strtolower($dir)) ?>" title="Reset pencarian">
+            <a class="btn btn-outline-secondary" href="?ps=<?= $limit ?>&sort=<?= urlencode($sort) ?>&dir=<?= urlencode(strtolower($dir)) ?>&focus_search=1" title="Reset pencarian">
               <i class="bi bi-x-lg"></i>
             </a>
           <?php endif; ?>
@@ -580,5 +582,19 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
 </div>
 </main>
 </div>
+<script>
+// Setelah Enter/Cari atau reset, fokus tetap pada kolom pencarian.
+(function () {
+  const searchInput = document.getElementById('search-kwitansi');
+  if (!searchInput) return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('q') || params.get('focus_search') === '1') {
+    searchInput.focus({preventScroll: true});
+    // Letakkan caret di akhir teks agar mudah mengedit/menghapus query.
+    const end = searchInput.value.length;
+    searchInput.setSelectionRange(end, end);
+  }
+})();
+</script>
 </body>
 </html>

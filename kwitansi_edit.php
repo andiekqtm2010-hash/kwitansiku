@@ -56,8 +56,9 @@ $status_now = trim($head['status_bayar'] ?? '');
 <style>
   /* Sedikit styling agar input nyaman dilihat */
   .table-items textarea { min-width: 220px; }
-  .table-items input { min-width: 120px; }
+  .table-items input { min-width: 0; }\n  .table-items textarea { width:100%; }
   .desc-td { min-width: 260px; }
+  .table-items .laba-satuan { background:#fff; }
 
   /* ===== Persistent Mugnesia Sidebar Layout ===== */
   body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
@@ -113,7 +114,7 @@ $status_now = trim($head['status_bayar'] ?? '');
       <!-- Field tanggal -->
       <div class="col-md-4">
         <label class="form-label">Tanggal</label>
-        <input type="date" class="form-control" name="tanggal"
+        <input type="date" class="form-control" name="tanggal" tabindex="-1"
                value="<?= htmlspecialchars($head['tanggal'] ?? '') ?>" required>
       </div>
 
@@ -147,102 +148,45 @@ $status_now = trim($head['status_bayar'] ?? '');
       </div>
     </div>
 
-    <!-- Kartu daftar item -->
     <div class="card mt-4">
       <div class="card-header d-flex justify-content-between align-items-center">
         <strong>Item Penjualan</strong>
-        <!-- Tombol tambah baris item baru (diproses di JS: addRow()) -->
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addRow()">+ Tambah Baris</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addRow()" tabindex="-1">+ Tambah Baris</button>
       </div>
-
       <div class="table-responsive">
-        <table class="table table-items mb-0 align-middle" id="itemsTable">
-          <thead class="table-light">
-            <tr>
-              <th style="width:45%">Deskripsi (multiline)</th>
-              <th style="width:10%">Qty</th>
-              <th style="width:20%">Harga Satuan (Rp)</th>
-              <th style="width:20%">Subtotal</th>
-              <th style="width:5%"></th>
-            </tr>
-          </thead>
-
+        <table class="table table-items mb-0 align-middle" id="itemsTable" style="min-width:1100px;table-layout:fixed">
+          <colgroup><col style="width:34%"><col style="width:7%"><col style="width:11%"><col style="width:12%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:3%"></colgroup>
+          <thead class="table-light"><tr>
+            <th>Deskripsi</th><th>Qty</th><th>HPP/Unit</th><th>Harga Jual/Unit</th><th>Laba/Unit</th><th>Subtotal</th><th>Total Laba</th><th></th>
+          </tr></thead>
           <tbody id="itemsBody">
-            <?php if (!empty($items)): ?>
-              <?php foreach ($items as $it): ?>
-                <tr>
-                  <!-- Deskripsi item -->
-                  <td class="desc-td">
-                    <textarea name="deskripsi[]" class="form-control" rows="2" required><?= htmlspecialchars($it['deskripsi']) ?></textarea>
-                  </td>
-
-                  <!-- Qty item; gunakan class 'qty' agar mudah diproses JS -->
-                  <td>
-                    <input name="qty[]" type="number" min="1" class="form-control text-end qty" 
-                           value="<?= (int)$it['qty'] ?>" required>
-                  </td>
-
-                  <!-- Harga satuan; gunakan class 'harga' agar mudah diproses JS -->
-                  <td>
-                    <input name="harga[]" class="form-control text-end harga" 
-                           value="<?= (int)$it['harga'] ?>">
-                  </td>
-
-                  <!-- Subtotal baris; readonly karena dihitung otomatis -->
-                  <td>
-                    <input class="form-control text-end subtotal" name="subtotal[]" readonly>
-                  </td>
-
-                  <!-- Tombol hapus baris; panggil hitung() setelah remove -->
-                  <td class="text-center">
-                    <button type="button" class="btn btn-sm btn-outline-danger" 
-                            onclick="this.closest('tr').remove();hitung();">Hapus</button>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-            <?php endif; ?>
+          <?php foreach ($items as $it): ?>
+          <tr>
+            <td><textarea name="deskripsi[]" class="form-control deskripsi" rows="2" required><?= htmlspecialchars($it['deskripsi'], ENT_QUOTES, 'UTF-8') ?></textarea></td>
+            <td><input name="qty[]" type="number" min="1" step="1" class="form-control text-end qty" value="<?= (int)$it['qty'] ?>" required></td>
+            <td><input name="hpp[]" type="number" min="0" step="1" class="form-control text-end hpp" value="<?= htmlspecialchars((string)($it['hpp'] ?? 0)) ?>" required></td>
+            <td><input name="harga[]" type="number" min="0" step="1" class="form-control text-end harga" value="<?= htmlspecialchars((string)$it['harga']) ?>" required></td>
+            <td><input type="number" step="1" class="form-control text-end laba-satuan" value="<?= htmlspecialchars((string)((float)$it['harga'] - (float)($it['hpp'] ?? 0))) ?>"></td>
+            <td><input class="form-control text-end subtotal" readonly tabindex="-1"></td>
+            <td><input class="form-control text-end total-laba" readonly tabindex="-1"></td>
+            <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove();hitung()" tabindex="-1">Hapus</button></td>
+          </tr>
+          <?php endforeach; ?>
           </tbody>
-
           <tfoot>
-            <tr>
-              <!-- Label Discount -->
-              <th class="text-end">Discount</th>
-
-              <!-- 
-                Input discount global:
-                - id="discount" dipakai oleh JS untuk membaca nilainya
-                - value: jika di DB tidak 0, pakai nilai DB; jika 0/null, pakai 0
-              -->
-                
-              <th>
-                <input 
-                  type="number" 
-                  id="discount" 
-                  name="discount"
-                  value="<?= ($head['discount'] ?? 0) != 0 ? htmlspecialchars((string)$head['discount']) : '0'; ?>">
-              </th>
-
-              <!-- Kolom total (gunakan style untuk width) -->
-              <th class="text-end" style="width:20%">Total</th>
-
-              <!-- 
-                Field total akhir:
-                - readonly; dihitung otomatis oleh JS = (sum subtotal) - discount
-              -->
-              <th>
-                <input type="text" class="form-control" id="total" name="total" readonly>
-              </th>
-              <th></th>
-            </tr>
+            <tr><th colspan="6" class="text-end">Total HPP</th><th><input id="total_hpp" class="form-control text-end" readonly></th><th></th></tr>
+            <tr><th colspan="6" class="text-end">Laba Kotor</th><th><input id="laba_kotor" class="form-control text-end" readonly></th><th></th></tr>
+            <tr><th colspan="6" class="text-end">Discount</th><th><input type="number" min="0" step="1" name="discount" id="discount" tabindex="-1" class="form-control text-end" value="<?= htmlspecialchars((string)($head['discount'] ?? 0)) ?>"></th><th></th></tr>
+            <tr><th colspan="6" class="text-end">Total Penjualan</th><th><input id="total" class="form-control text-end fw-bold" readonly></th><th></th></tr>
+            <tr><th colspan="6" class="text-end">Laba Setelah Diskon</th><th><input id="laba_bersih" class="form-control text-end fw-bold" readonly></th><th></th></tr>
           </tfoot>
         </table>
       </div>
     </div>
-
-    <!-- Tombol simpan & lihat cetak -->
     <div class="mt-3 d-flex gap-2">
-      <button type="submit" class="btn btn-primary">Simpan Perubahan & Cetak</button>
-      <a href="kwitansi_print.php?id=<?= (int)$head['id'] ?>" target="_blank" class="btn btn-outline-secondary">Lihat Print</a>
+      <button type="submit" name="aksi_simpan" value="update" class="btn btn-success">Update</button>
+      <button type="submit" name="aksi_simpan" value="cetak" class="btn btn-primary">Update &amp; Cetak</button>
+      <a href="kwitansi_print.php?id=<?= (int)$head['id'] ?>" target="_blank" tabindex="-1" class="btn btn-outline-secondary">Lihat Print</a>
     </div>
   </form>
 </div>
@@ -255,165 +199,71 @@ $status_now = trim($head['status_bayar'] ?? '');
      - Event listener dipasang setelah DOM siap (DOMContentLoaded)
 -->
 <script>
-/**
- * Format angka ke format ribuan Indonesia tanpa prefix "Rp".
- * Contoh: 12345 -> "12.345"
- * @param {number} x
- * @returns {string}
- */
-function rupiah(x){
-  return (x || 0).toLocaleString('id-ID');
-}
-
-/**
- * Ubah string angka (yang mungkin berisi titik/koma/pemisah) menjadi Number.
- * - Menghapus karakter selain digit, koma, titik, minus
- * - Menghapus semua titik/koma sebagai pemisah ribuan
- * - Menghasilkan integer (bisa diubah ke float jika perlu)
- * @param {string|number} v
- * @returns {number}
- */
-function parseNum(v){
-  if (v == null) return 0;
-  v = String(v).trim();
-  if (!v) return 0;
-
-  // buang semua selain angka, koma, titik, minus
-  v = v.replace(/[^0-9.,-]/g, "");
-
-  // buang pemisah ribuan (titik/koma)
-  v = v.replace(/[.,]/g, "");
-
-  const n = parseInt(v, 10);
-  return isNaN(n) ? 0 : n;
-}
-
-/**
- * Tambah baris item baru ke tabel:
- * - desc: deskripsi default (string)
- * - qty:  jumlah default (number)
- * - harga: harga default (number)
- * Setelah ditambahkan:
- * - pasang event listener (bindRow)
- * - jalankan hitung() agar subtotal & total ter-update
- */
-function addRow(desc = 'Item', qty = 1, harga = 0){
-  const tr = document.createElement('tr');
-
-  tr.innerHTML = `
-    <td class="desc-td">
-      <textarea name="deskripsi[]" class="form-control" rows="2" required>${desc}</textarea>
-    </td>
-    <td>
-      <input name="qty[]" type="number" min="1" class="form-control text-end qty" value="${qty}" required>
-    </td>
-    <td>
-      <input name="harga[]" class="form-control text-end harga" value="${harga}">
-    </td>
-    <td>
-      <input class="form-control text-end subtotal" name="subtotal[]" readonly>
-    </td>
-    <td class="text-center">
-      <button type="button" class="btn btn-sm btn-outline-danger" 
-              onclick="this.closest('tr').remove();hitung();">Hapus</button>
-    </td>
-  `;
-
+const fmt=n=>(Number(n)||0).toLocaleString('id-ID');
+function addRow(){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td><textarea name="deskripsi[]" class="form-control deskripsi" rows="2" required></textarea></td>
+  <td><input name="qty[]" type="number" min="1" step="1" value="1" class="form-control text-end qty" required></td>
+  <td><input name="hpp[]" type="number" min="0" step="1" value="0" class="form-control text-end hpp" required></td>
+  <td><input name="harga[]" type="number" min="0" step="1" value="0" class="form-control text-end harga" required></td>
+  <td><input type="number" step="1" value="0" class="form-control text-end laba-satuan"></td>
+  <td><input class="form-control text-end subtotal" readonly tabindex="-1"></td>
+  <td><input class="form-control text-end total-laba" readonly tabindex="-1"></td>
+  <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove();hitung()" tabindex="-1">Hapus</button></td>`;
   document.getElementById('itemsBody').appendChild(tr);
-  bindRow(tr);
   hitung();
 }
-
-/**
- * Pasang event listener input pada satu baris:
- * - Saat qty/harga berubah -> panggil hitung()
- * @param {HTMLTableRowElement} tr 
- */
-function bindRow(tr){
-  tr.querySelector('.qty')?.addEventListener('input', hitung);
-  tr.querySelector('.harga')?.addEventListener('input', hitung);
-}
-
-/**
- * Pasang event listener untuk SEMUA baris yang sudah ada saat page load.
- * (Baris baru akan dipasang listener-nya via bindRow() di addRow)
- */
-function bindAll(){
-  document.querySelectorAll('#itemsBody tr').forEach(tr => bindRow(tr));
-}
-
-/**
- * Fungsi utama perhitungan:
- * - Loop semua baris item -> hitung subtotal per baris = qty * harga
- * - Jumlahkan semua subtotal -> total
- * - Ambil discount global (footer)
- * - grandTotal = max(total - discount, 0)
- * - Tampilkan grandTotal ke field #total (format rupiah)
- */
 function hitung(){
-  let total = 0;
-
-  // Hitung subtotal per baris
-  document.querySelectorAll('#itemsBody tr').forEach(tr => {
-    const qty   = parseNum(tr.querySelector('.qty')?.value || 0);
-    const harga = parseNum(tr.querySelector('.harga')?.value || 0);
-    const sub   = qty * harga;
-
-    const subEl = tr.querySelector('.subtotal');
-    if (subEl) subEl.value = rupiah(sub);
-
-    total += sub;
-  });
-
-  // Ambil discount global dari footer
-  const discount = parseNum(document.getElementById('discount')?.value || 0);
-
-  // Pastikan tidak negatif (kalau mau mengizinkan negatif, hilangkan Math.max)
-  const grandTotal = Math.max(total - discount);
-
-  // Tampilkan grand total
-  const totalEl = document.getElementById('total');
-  if (totalEl) totalEl.value = rupiah(grandTotal);
+ let bruto=0,hppTotal=0,labaTotal=0;
+ document.querySelectorAll('#itemsBody tr').forEach(tr=>{
+  const q=Number(tr.querySelector('.qty').value)||0;
+  const hpp=Number(tr.querySelector('.hpp').value)||0;
+  const harga=Number(tr.querySelector('.harga').value)||0;
+  const laba=harga-hpp,subtotal=q*harga,totalLaba=q*laba;
+  const labaInput=tr.querySelector('.laba-satuan');
+  // Kolom laba tetap dapat diedit; tampilkan angka tanpa separator agar input number valid.
+  if(document.activeElement!==labaInput) labaInput.value=laba;
+  tr.querySelector('.subtotal').value=fmt(subtotal);
+  tr.querySelector('.total-laba').value=fmt(totalLaba);
+  bruto+=subtotal;hppTotal+=q*hpp;labaTotal+=totalLaba;
+ });
+ const disc=Number(document.getElementById('discount').value)||0;
+ document.getElementById('total_hpp').value=fmt(hppTotal);
+ document.getElementById('laba_kotor').value=fmt(labaTotal);
+ document.getElementById('total').value=fmt(bruto-disc);
+ document.getElementById('laba_bersih').value=fmt(labaTotal-disc);
 }
-
-/**
- * Inisialisasi setelah dokumen siap:
- * - Pasang listener untuk baris yang sudah ada (bindAll)
- * - Jika belum ada baris item, tambahkan satu baris default
- * - Pasang listener untuk perubahan di tbody (event delegation)
- * - Pasang listener untuk perubahan discount
- * - Jalankan hitung() awal
- */
-document.addEventListener('DOMContentLoaded', () => {
-  bindAll();
-
-  // Jika tidak ada baris item saat load, buat satu baris default
-  if (document.querySelectorAll('#itemsBody tr').length === 0){
-    addRow('Item', 1, 0);
-  } else {
+document.addEventListener('DOMContentLoaded',()=>{
+ if(!document.querySelector('#itemsBody tr'))addRow();
+ document.getElementById('itemsBody').addEventListener('input',e=>{
+  if(e.target.matches('.laba-satuan')){
+    const tr=e.target.closest('tr');
+    const hpp=Number(tr.querySelector('.hpp').value)||0;
+    const laba=Number(e.target.value)||0;
+    tr.querySelector('.harga').value=Math.max(0,hpp+laba);
     hitung();
+   } else if(e.target.matches('.qty,.hpp,.harga')) hitung();
+ });
+ document.getElementById('formKwitansi').addEventListener('keydown',e=>{
+  if(e.key!=='Tab' || e.shiftKey) return;
+  const lastLaba=document.querySelector('#itemsBody tr:last-child .laba-satuan');
+  if(e.target===lastLaba){
+   e.preventDefault();
+   document.querySelector('button[name="aksi_simpan"][value="update"]').focus();
   }
-
-  // Event delegation: bila ada perubahan di qty/harga dalam tbody -> hitung ulang
-  document.getElementById('itemsBody')?.addEventListener('input', (e) => {
-    if (e.target.classList.contains('qty') || e.target.classList.contains('harga')) {
-      hitung();
-    }
-  });
-
-  // Re-hitung saat discount berubah
-  document.getElementById('discount')?.addEventListener('input', hitung);
-
-  // Cegah update jika total transaksi Rp 0
-  document.getElementById('formKwitansi')?.addEventListener('submit', (e) => {
-    hitung();
-    const total = parseNum(document.getElementById('total')?.value || 0);
-    if (total <= 0) {
-      e.preventDefault();
-      alert('Total transaksi tidak boleh Rp 0. Silakan isi harga/nominal transaksi terlebih dahulu.');
-      document.querySelector('.harga')?.focus();
-    }
-  });
+ });
+ document.getElementById('discount').addEventListener('input',hitung);
+ ['nama_pelanggan','alamat_pelanggan'].forEach(name=>{
+  const el=document.querySelector('[name="'+name+'"]');
+  el.addEventListener('input',()=>{const a=el.selectionStart,b=el.selectionEnd;el.value=el.value.toLocaleUpperCase('id-ID');el.setSelectionRange(a,b);});
+ });
+ document.getElementById('formKwitansi').addEventListener('submit',e=>{
+  hitung();
+  if(!document.querySelector('#itemsBody tr') || Number(document.getElementById('total').value.replace(/\\./g,''))<=0){
+   e.preventDefault();alert('Total transaksi tidak boleh Rp 0. Isi harga transaksi terlebih dahulu.');
+  }
+ });
+ hitung();
 });
 </script>
 </main>

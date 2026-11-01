@@ -1,126 +1,66 @@
 <?php
-require_once "db.php"; // Koneksi ($conn)
-
-/**
- * rupiah_to_number
- * ----------------
- * Ubah string rupiah jadi angka:
- * - Hapus titik, koma, dan spasi.
- * - "1.250,00" -> "125000" -> 125000.0
- * Catatan: ini menghapus desimal. Jika butuh 2 desimal, pakai parser lokal khusus.
- */
-function rupiah_to_number($s) {
-  $s = str_replace(['.',',',' '], '', $s);
-  return (float)$s;
+require_once "db.php";
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+function num($v) {
+  $v=trim((string)$v);
+  // Form input number memakai angka polos; format lama "55.000" tetap diterima.
+  if (preg_match('/^-?\\d+([.]\\d{1,2})?$/', $v)) return (float)$v;
+  return (float)str_replace(['.',',',' '], '', $v);
 }
-
-// Hanya izinkan POST
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-  header("Location: index.php");
-  exit;
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {header('Location: index.php');exit;}
+$id=(int)($_POST['id']??0);
+if($id<=0)die('ID tidak valid.');
+$tanggal=$_POST['tanggal']??'';
+$nama=mb_strtoupper(trim($_POST['nama_pelanggan']??''),'UTF-8');
+$alamat=mb_strtoupper(trim($_POST['alamat_pelanggan']??''),'UTF-8');
+$catatan=trim($_POST['catatan']??'');
+$status=$_POST['status_bayar']??'';
+if(!in_array($status,['Lunas','Piutang'],true))die('Status pembayaran tidak valid.');
+if(!preg_match('/^\\d{4}-\\d{2}-\\d{2}$/',$tanggal))die('Tanggal tidak valid.');
+$deskripsi=$_POST['deskripsi']??[];
+$qty=$_POST['qty']??[];
+$hpp=$_POST['hpp']??[];
+$harga=$_POST['harga']??[];
+if(!is_array($deskripsi)||!is_array($qty)||!is_array($hpp)||!is_array($harga))die('Format item tidak valid.');
+if(count($deskripsi)!==count($qty)||count($deskripsi)!==count($hpp)||count($deskripsi)!==count($harga))die('Data item tidak lengkap. HPP tidak boleh hilang.');
+$items=[];$bruto=0;
+foreach($deskripsi as $i=>$d){
+  $d=trim((string)$d);
+  if($d==='')continue;
+  $q=(int)$qty[$i];$cost=num($hpp[$i]);$price=num($harga[$i]);
+  if($q<1||$cost<0||$price<0)die('Qty, HPP, atau harga tidak valid.');
+  $sub=$q*$price;$profitUnit=$price-$cost;$profitTotal=$q*$profitUnit;
+  $items[]=[$d,$q,$cost,$price,$profitUnit,$sub,$profitTotal];
+  $bruto+=$sub;
 }
-
-// Ambil ID kwitansi (wajib)
-$id = (int)($_POST['id'] ?? 0);
-if ($id <= 0) { die("ID tidak valid."); }
-
-// ================== Ambil data HEADER ==================
-$tanggal       = $_POST['tanggal'] ?? date('Y-m-d');          // Tanggal transaksi
-$nama          = trim($_POST['nama_pelanggan'] ?? '');        // Nama pelanggan
-$alamat        = trim($_POST['alamat_pelanggan'] ?? '');      // Alamat pelanggan
-$catatan       = trim($_POST['catatan'] ?? '');               // Catatan
-$status_bayar  = trim($_POST['status_bayar'] ?? '');          // Status bayar
-$discount_hdr  = rupiah_to_number($_POST['discount'] ?? '0'); // Diskon header (nominal)
-
-// ================== Ambil data DETAIL (items) ==================
-$deskripsi = $_POST['deskripsi'] ?? []; // array deskripsi per baris
-$qty       = $_POST['qty'] ?? [];       // array qty per baris
-$harga     = $_POST['harga'] ?? [];     // array harga per baris
-
-// ================== Hitung total ==================
-// total_bruto = jumlah semua (qty * harga) per baris
-$items = [];        // akan diinsert ulang ke kwitansi_item
-$total_bruto = 0.0; // total sebelum diskon
-
-for ($i = 0; $i < count($deskripsi); $i++) {
-  $d = trim($deskripsi[$i] ?? '');
-  if ($d === '') continue; // skip baris kosong
-
-  // qty minimal 1
-  $q = max(1, (int)($qty[$i] ?? 0));
-
-  // harga satuan -> angka
-  $h = rupiah_to_number($harga[$i] ?? '0');
-
-  // subtotal baris
-  $s = $q * $h;
-
-  $total_bruto += $s;
-  $items[] = [$d, $q, $h, $s];
+if(!$items)die('Item tidak boleh kosong.');
+$discount=num($_POST['discount']??0);
+if($discount<0||$discount>$bruto)die('Diskon tidak valid.');
+$total=$bruto-$discount;
+if($total<=0)die('Total transaksi tidak boleh Rp 0.');
+try{
+ $conn->begin_transaction();
+ $check=$conn->prepare('SELECT id FROM kwitansi WHERE id=? FOR UPDATE');
+ $check->bind_param('i',$id);$check->execute();
+ if(!$check->get_result()->fetch_assoc())throw new Exception('Kwitansi tidak ditemukan.');
+ $check->close();
+ $head=$conn->prepare('UPDATE kwitansi SET tanggal=?, nama_pelanggan=?, alamat_pelanggan=?, catatan=?, status_bayar=?, discount=?, total=? WHERE id=?');
+ $head->bind_param('sssssddi',$tanggal,$nama,$alamat,$catatan,$status,$discount,$total,$id);
+ $head->execute();$head->close();
+ // Semua kolom laba disimpan ulang secara konsisten dan atomik.
+ $del=$conn->prepare('DELETE FROM kwitansi_item WHERE kwitansi_id=?');
+ $del->bind_param('i',$id);$del->execute();$del->close();
+ $ins=$conn->prepare('INSERT INTO kwitansi_item (kwitansi_id,deskripsi,qty,hpp,harga,laba_satuan,subtotal,total_laba) VALUES (?,?,?,?,?,?,?,?)');
+ foreach($items as [$d,$q,$cost,$price,$profitUnit,$sub,$profitTotal]){
+  $ins->bind_param('isiddddd',$id,$d,$q,$cost,$price,$profitUnit,$sub,$profitTotal);
+  $ins->execute();
+ }
+ $ins->close();
+ $conn->commit();
+ $tujuan = ($_POST['aksi_simpan'] ?? 'cetak') === 'update' ? 'list_kwitansi.php' : 'kwitansi_print.php?id='.$id;
+ header('Location: '.$tujuan);exit;
+}catch(Throwable $e){
+ $conn->rollback();
+ http_response_code(500);
+ die('Gagal menyimpan perubahan. Data lama tidak dihapus. Detail: '.htmlspecialchars($e->getMessage(),ENT_QUOTES,'UTF-8'));
 }
-
-// Validasi: harus ada minimal 1 item
-if (empty($items)) {
-  die("Item tidak boleh kosong. <a href='kwitansi_edit.php?id=".$id."'>Kembali</a>");
-}
-
-// Pastikan diskon tidak melebihi total_bruto & tidak negatif
-$discount_hdr = max(0, min($discount_hdr, $total_bruto));
-
-// total_netto = total_bruto - discount (disimpan ke kolom `total`)
-$total_netto = $total_bruto - $discount_hdr;
-
-// VALIDASI WAJIB: transaksi dengan total Rp 0 tidak boleh di-update
-if ($total_netto <= 0) {
-  die("<script>
-      alert('Total transaksi tidak boleh Rp 0. Silakan isi harga/nominal transaksi terlebih dahulu.');
-      window.history.back();
-  </script>");
-}
-
-// ================== Update header kwitansi ==================
-// Catatan: no_kwitansi tidak diubah di sini
-$stmt = $conn->prepare("
-  UPDATE kwitansi
-     SET tanggal = ?,
-         nama_pelanggan = ?,
-         alamat_pelanggan = ?,
-         catatan = ?,
-         status_bayar = ?,
-         discount = ?,     -- simpan diskon nominal (grand total discount)
-         total = ?         -- simpan total setelah diskon (netto)
-   WHERE id = ?
-");
-$stmt->bind_param(
-  "sssssddi",
-  $tanggal,
-  $nama,
-  $alamat,
-  $catatan,
-  $status_bayar,
-  $discount_hdr,  // d
-  $total_netto,   // d
-  $id             // i
-);
-$stmt->execute();
-$stmt->close();
-
-// ================== Refresh detail: hapus lama, insert baru ==================
-$stmtDel = $conn->prepare("DELETE FROM kwitansi_item WHERE kwitansi_id = ?");
-$stmtDel->bind_param("i", $id);
-$stmtDel->execute();
-$stmtDel->close();
-
-$stmtIns = $conn->prepare("
-  INSERT INTO kwitansi_item (kwitansi_id, deskripsi, qty, harga, subtotal)
-  VALUES (?,?,?,?,?)
-");
-foreach ($items as [$d, $q, $h, $s]) {
-  $stmtIns->bind_param("isidd", $id, $d, $q, $h, $s);
-  $stmtIns->execute();
-}
-$stmtIns->close();
-
-// ================== Selesai -> ke halaman print ==================
-header("Location: kwitansi_print.php?id=".$id);
-exit;

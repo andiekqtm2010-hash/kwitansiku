@@ -5,6 +5,8 @@
 // - Mengubah transaksi PLN menjadi transaksi PIUTANG di modul kwitansi
 // - Membuat HEADER pada tabel kwitansi
 // - Membuat DETAIL pada tabel kwitansi_item
+// - HPP termasuk biaya admin bank riil Rp3.000 (maksimal sebesar admin pelanggan)
+// - Laba = harga jual - HPP; total_laba = qty * laba_satuan
 // - Setelah berhasil kembali ke list_tagihan.php
 //
 // CATATAN PENTING:
@@ -38,7 +40,9 @@ if ($id <= 0) {
 // - stand_awal
 // - stand_akhir
 // - periode
-// - total_bayar
+// - rp_tagihan (tagihan pokok)
+// - admin_bank (admin yang ditagihkan ke pelanggan)
+// - total_bayar (harga jual)
 // ============================================================
 $sql = "SELECT
             id,
@@ -50,6 +54,8 @@ $sql = "SELECT
             stand_awal,
             stand_akhir,
             periode,
+            rp_tagihan,
+            admin_bank,
             total_bayar
         FROM tb_tagihan_listrik
         WHERE id = ?
@@ -170,7 +176,17 @@ $deskripsi =
 
 $qty = 1;
 $harga = $total;
-$subtotal = $total;
+// Biaya admin bank riil standar Rp3.000; sisa admin pelanggan adalah margin.
+// Contoh: total_bayar 72.210, admin_bank 5.000 => margin 2.000, HPP 70.210.
+// HPP menggunakan total bayar dikurangi margin agar komponen tagihan lain
+// (misalnya denda) tidak keliru dihitung sebagai keuntungan.
+$admin_pelanggan = max(0, (float)$row['admin_bank']);
+$biaya_admin_bank_riil = min($admin_pelanggan, 3000.00);
+$margin_admin = $admin_pelanggan - $biaya_admin_bank_riil;
+$hpp = $harga - $margin_admin;
+$subtotal = $qty * $harga;
+$laba_satuan = $harga - $hpp;
+$total_laba = $qty * $laba_satuan;
 
 
 // ============================================================
@@ -231,7 +247,10 @@ try {
     // 7b) INSERT DETAIL KWITANSI ITEM
     // qty      = 1
     // harga    = total_bayar PLN
-    // subtotal = total_bayar PLN
+    // hpp      = total_bayar PLN - margin admin pelanggan
+    // subtotal = qty * harga
+    // laba_satuan = harga - hpp
+    // total_laba  = qty * laba_satuan
     // --------------------------------------------------------
     $stmt = $conn->prepare("
         INSERT INTO kwitansi_item
@@ -239,10 +258,13 @@ try {
             kwitansi_id,
             deskripsi,
             qty,
+            hpp,
             harga,
-            subtotal
+            laba_satuan,
+            subtotal,
+            total_laba
         )
-        VALUES (?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?)
     ");
 
     if (!$stmt) {
@@ -250,12 +272,15 @@ try {
     }
 
     $stmt->bind_param(
-        "isidd",
+        "isiddddd",
         $kwitansi_id,
         $deskripsi,
         $qty,
+        $hpp,
         $harga,
-        $subtotal
+        $laba_satuan,
+        $subtotal,
+        $total_laba
     );
 
     if (!$stmt->execute()) {
