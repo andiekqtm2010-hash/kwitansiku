@@ -79,6 +79,55 @@
     // ================================
     // 6) Query data utama
     // ================================
+    // Hanya query tabel yang ditampilkan yang membutuhkan join laba.
+    // Pencarian, grand total, jumlah data, dan pagination tetap seperti semula.
+    $sql = preg_replace('/^SELECT \* FROM kwitansi /',
+        "SELECT k.*, CASE WHEN m.total_hpp IS NOT NULL THEN k.total - m.total_hpp ELSE NULL END AS laba_kwitansi
+         FROM kwitansi k
+         LEFT JOIN (SELECT kwitansi_id,
+           CASE WHEN COUNT(*) > 0 AND COUNT(*) = SUM(CASE WHEN hpp > 0 OR COALESCE(total_laba,0) <> 0 THEN 1 ELSE 0 END)
+                THEN SUM(qty * hpp) ELSE NULL END AS total_hpp
+    FROM kwitansi_item
+    GROUP BY kwitansi_id) m ON m.kwitansi_id = k.id ", $sql, 1);
+    // Export seluruh hasil pencarian sebelum LIMIT pagination diterapkan.
+    if (($_GET['export'] ?? '') === 'txt') {
+        $export_stmt = $conn->prepare($sql . "ORDER BY {$orderBy} {$dir}");
+        if ($types) { $export_stmt->bind_param($types, ...$params); }
+        $export_stmt->execute();
+        $export_res = $export_stmt->get_result();
+
+        header('Content-Type: text/plain; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="kwitansi_mugnesia_' . date('Ymd_His') . '.txt"');
+        header('Cache-Control: no-store');
+        $out = fopen('php://output', 'w');
+        // BOM UTF-8 dan CRLF agar terbaca baik di Notepad Windows.
+        fwrite($out, "\xEF\xBB\xBF");
+        fwrite($out, "NO KWITANSI\tTANGGAL\tNAMA PELANGGAN\tCATATAN\tSTATUS BAYAR\tDISKON\tTOTAL\tLABA\r\n");
+        while ($item = $export_res->fetch_assoc()) {
+            $tanggal = strtotime($item['tanggal'] ?? '');
+            $fields = [
+                $item['no_kwitansi'] ?? '',
+                $tanggal !== false ? date('d/m/Y', $tanggal) : '',
+                $item['nama_pelanggan'] ?? '',
+                $item['catatan'] ?? '',
+                $item['status_bayar'] ?? '',
+                'Rp ' . number_format((float)($item['discount'] ?? 0), 0, ',', '.'),
+                'Rp ' . number_format((float)($item['total'] ?? 0), 0, ',', '.'),
+                $item['laba_kwitansi'] !== null
+                    ? 'Rp ' . number_format((float)$item['laba_kwitansi'], 0, ',', '.')
+                    : 'Belum lengkap'
+            ];
+            // Setiap transaksi tetap satu baris, meskipun catatan berisi enter/tab.
+            $fields = array_map(function ($value) {
+                return str_replace(["\r", "\n", "\t"], ' ', (string)$value);
+            }, $fields);
+            fwrite($out, implode("\t", $fields) . "\r\n");
+        }
+        fclose($out);
+        $export_stmt->close();
+        exit;
+    }
+
     $sql .= "ORDER BY {$orderBy} {$dir} LIMIT ? OFFSET ?";
     $stmt = $conn->prepare($sql);
     if ($types) {
@@ -423,9 +472,16 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
         <div class="fw-bold">Daftar Kwitansi</div>
         <div class="record-info">Menampilkan <?= $start_row ?>–<?= $end_row ?> dari <?= number_format($count,0,',','.') ?> data</div>
       </div>
-      <span class="badge text-bg-light border px-3 py-2">
-        <i class="bi bi-receipt me-1"></i><?= number_format($count,0,',','.') ?> transaksi
-      </span>
+      <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+        <a class="btn btn-outline-success btn-sm"
+           href="?<?= htmlspecialchars(http_build_query(['export' => 'txt', 'q' => $search, 'sort' => $sort, 'dir' => strtolower($dir)]), ENT_QUOTES, 'UTF-8') ?>"
+           title="Export semua hasil pencarian ke TXT">
+          <i class="bi bi-download me-1"></i>Export TXT
+        </a>
+        <span class="badge text-bg-light border px-3 py-2">
+          <i class="bi bi-receipt me-1"></i><?= number_format($count,0,',','.') ?> transaksi
+        </span>
+      </div>
     </div>
 
     <div class="table-responsive">
@@ -463,6 +519,7 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
                 Total <?= sortIcon('total', $sort, $dir) ?>
               </a>
             </th>
+            <th class="text-end">Laba</th>
             <th class="text-center">Aksi</th>
           </tr>
         </thead>
@@ -498,6 +555,7 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
               </td>
               <td class="text-end money">Rp <?= number_format($row['discount'], 0, ',', '.') ?></td>
               <td class="text-end money total-money">Rp <?= number_format($row['total'], 0, ',', '.') ?></td>
+              <td class="text-end money fw-bold"><?= $row['laba_kwitansi'] !== null ? 'Rp '.number_format((float)$row['laba_kwitansi'], 0, ',', '.') : '<span class="text-muted" title="Data HPP/laba belum lengkap">—</span>' ?></td>
               <td class="text-center text-nowrap">
                 <div class="d-inline-flex gap-1">
                   <a class="btn btn-outline-secondary btn-sm action-btn"
@@ -518,7 +576,7 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
 
           <?php if ($res->num_rows === 0): ?>
             <tr>
-              <td colspan="8" class="text-center py-5 text-muted">
+              <td colspan="9" class="text-center py-5 text-muted">
                 <i class="bi bi-inbox fs-2 d-block mb-2"></i>
                 Belum ada data yang ditemukan.
               </td>

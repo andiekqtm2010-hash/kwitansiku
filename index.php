@@ -73,7 +73,17 @@ if ($kolom_hpp && $kolom_hpp->num_rows > 0) {
     }
 }
 
-$recent = $conn->query("SELECT id,no_kwitansi,tanggal,nama_pelanggan,status_bayar,total,catatan FROM kwitansi ORDER BY id DESC LIMIT 8");
+// Laba per kwitansi: total penjualan setelah diskon dikurangi seluruh HPP item.
+// NULL jika data HPP/laba historis belum lengkap; tidak menganggap harga jual sebagai laba.
+$recent = $conn->query("SELECT k.id,k.no_kwitansi,k.tanggal,k.nama_pelanggan,k.status_bayar,k.total,k.catatan,
+    CASE WHEN m.total_hpp IS NOT NULL THEN k.total - m.total_hpp ELSE NULL END AS laba_kwitansi
+    FROM kwitansi k
+    LEFT JOIN (SELECT kwitansi_id,
+           CASE WHEN COUNT(*) > 0 AND COUNT(*) = SUM(CASE WHEN hpp > 0 OR COALESCE(total_laba,0) <> 0 THEN 1 ELSE 0 END)
+                THEN SUM(qty * hpp) ELSE NULL END AS total_hpp
+    FROM kwitansi_item
+    GROUP BY kwitansi_id) m ON m.kwitansi_id = k.id
+    ORDER BY k.id DESC LIMIT 8");
 ?>
 <!doctype html>
 <html lang="id">
@@ -143,10 +153,10 @@ body{margin:0 !important;padding:0 !important;background:#f4f7fb;}
       </div></div>
     </div>
   </div>
-  <div class="cardx"><div class="cardx-head"><div><div class="cardx-title">Transaksi Terbaru</div><div class="subtitle">8 kwitansi terakhir yang tersimpan.</div></div><a href="list_kwitansi.php" class="btn btn-sm btn-outline-primary">Lihat Semua</a></div><div class="table-responsive"><table class="table"><thead><tr><th>No Kwitansi</th><th>Tanggal</th><th>Pelanggan</th><th>Catatan</th><th>Status</th><th class="text-end">Total</th></tr></thead><tbody>
+  <div class="cardx"><div class="cardx-head"><div><div class="cardx-title">Transaksi Terbaru</div><div class="subtitle">8 kwitansi terakhir yang tersimpan.</div></div><a href="list_kwitansi.php" class="btn btn-sm btn-outline-primary">Lihat Semua</a></div><div class="table-responsive"><table class="table"><thead><tr><th>No Kwitansi</th><th>Tanggal</th><th>Pelanggan</th><th>Catatan</th><th>Status</th><th class="text-end">Total</th><th class="text-end">Laba</th></tr></thead><tbody>
   <?php if ($recent && $recent->num_rows): while($r=$recent->fetch_assoc()): $st=strtolower(trim($r['status_bayar']??'')); ?>
-  <tr><td><a href="kwitansi_edit.php?id=<?= (int)$r['id'] ?>" class="text-decoration-none fw-bold"><?= htmlspecialchars($r['no_kwitansi']) ?></a></td><td class="text-nowrap"><?= date('d/m/Y',strtotime($r['tanggal'])) ?></td><td class="fw-semibold"><?= htmlspecialchars($r['nama_pelanggan']) ?></td><td class="text-muted"><?= htmlspecialchars(mb_strimwidth($r['catatan']??'',0,55,'…')) ?></td><td><span class="status <?= $st==='lunas'?'badge-lunas':($st==='piutang'?'badge-piutang':'bg-light') ?>"><?= htmlspecialchars($r['status_bayar'] ?: '-') ?></span></td><td class="text-end fw-bold text-nowrap">Rp <?= number_format($r['total'],0,',','.') ?></td></tr>
-  <?php endwhile; else: ?><tr><td colspan="6" class="text-center text-muted py-4">Belum ada transaksi.</td></tr><?php endif; ?>
+  <tr><td><a href="kwitansi_edit.php?id=<?= (int)$r['id'] ?>" class="text-decoration-none fw-bold"><?= htmlspecialchars($r['no_kwitansi']) ?></a></td><td class="text-nowrap"><?= date('d/m/Y',strtotime($r['tanggal'])) ?></td><td class="fw-semibold"><?= htmlspecialchars($r['nama_pelanggan']) ?></td><td class="text-muted"><?= htmlspecialchars(mb_strimwidth($r['catatan']??'',0,55,'…')) ?></td><td><span class="status <?= $st==='lunas'?'badge-lunas':($st==='piutang'?'badge-piutang':'bg-light') ?>"><?= htmlspecialchars($r['status_bayar'] ?: '-') ?></span></td><td class="text-end fw-bold text-nowrap">Rp <?= number_format($r['total'],0,',','.') ?></td><td class="text-end fw-bold text-nowrap"><?= $r['laba_kwitansi'] !== null ? 'Rp '.number_format((float)$r['laba_kwitansi'],0,',','.') : '<span class="text-muted" title="Data HPP/laba belum lengkap">—</span>' ?></td></tr>
+  <?php endwhile; else: ?><tr><td colspan="7" class="text-center text-muted py-4">Belum ada transaksi.</td></tr><?php endif; ?>
   </tbody></table></div></div>
 </main>
 </div>
